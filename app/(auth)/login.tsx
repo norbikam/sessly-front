@@ -9,8 +9,6 @@ import {
   Platform,
   Dimensions,
   TouchableOpacity,
-  TouchableWithoutFeedback,
-  Keyboard,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
@@ -33,6 +31,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{ username?: string; password?: string }>({});
+  const [loginError, setLoginError] = useState<string>(''); // Nowe: error message
   
   const { login } = useAuth();
   const router = useRouter();
@@ -58,15 +57,17 @@ export default function LoginScreen() {
     if (!validate()) return;
 
     setLoading(true);
+    setLoginError(''); // Clear previous errors
+    
     try {
       await login({username, password});
       router.replace('/(tabs)');
     } catch (error: any) {
-      console.error('Login error:', error);
+      console.error('❌ [Login] Error:', error);
       
       let errorMessage = 'Nieprawidłowa nazwa użytkownika lub hasło';
       
-      if (error.response?.data) {
+      if (error?.response?.data) {
         const data = error.response.data;
         
         if (data.detail) {
@@ -84,10 +85,22 @@ export default function LoginScreen() {
           errorMessage = Array.isArray(data.username) ? data.username[0] : data.username;
         } else if (data.password) {
           errorMessage = Array.isArray(data.password) ? data.password[0] : data.password;
+        } else if (data.non_field_errors) {
+          errorMessage = Array.isArray(data.non_field_errors) 
+            ? data.non_field_errors[0] 
+            : data.non_field_errors;
         }
+      } else if (error?.message) {
+        errorMessage = error.message;
       }
       
-      Alert.alert('Błąd logowania', errorMessage);
+      // Show error message
+      setLoginError(errorMessage);
+      
+      // Also show native alert on mobile
+      if (!isWeb) {
+        Alert.alert('Błąd logowania', errorMessage);
+      }
     } finally {
       setLoading(false);
     }
@@ -103,7 +116,7 @@ export default function LoginScreen() {
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.backgroundGradient}
-        pointerEvents="none" // <- allow touches to pass through
+        pointerEvents="none"
       />
 
       <KeyboardAvoidingView 
@@ -113,103 +126,116 @@ export default function LoginScreen() {
         pointerEvents="box-none"
       >
         <ScrollView 
-               contentContainerStyle={[
-                 styles.scrollContent,
-                 isLargeScreen && styles.scrollContentLarge
-               ]}
-               keyboardShouldPersistTaps="always"
-               /* keyboardDismissMode removed - może powodować natychmiastowe zwinięcie */
-               showsVerticalScrollIndicator={false}
-               pointerEvents="box-none"
-               bounces={false}
-             >
-              {/* Logo/Brand Section */}
-              <View style={styles.brandContainer}>
-                <View style={styles.logoCircle}>
-                  <Ionicons name="calendar" size={48} color="#FF6B35" />
-                </View>
-                <Text style={styles.brandName}>Sessly</Text>
-                <Text style={styles.brandTagline}>Zarządzaj swoim czasem</Text>
+          contentContainerStyle={[
+            styles.scrollContent,
+            isLargeScreen && styles.scrollContentLarge
+          ]}
+          keyboardShouldPersistTaps="always"
+          showsVerticalScrollIndicator={false}
+          pointerEvents="box-none"
+          bounces={false}
+        >
+          {/* Logo/Brand Section */}
+          <View style={styles.brandContainer}>
+            <View style={styles.logoCircle}>
+              <Ionicons name="calendar" size={48} color="#FF6B35" />
+            </View>
+            <Text style={styles.brandName}>Sessly</Text>
+            <Text style={styles.brandTagline}>Zarządzaj swoim czasem</Text>
+          </View>
+
+          {/* Login Card */}
+          <View style={[styles.card, isLargeScreen && styles.cardLarge]}>
+            <View style={styles.cardHeader}>
+              <Text style={styles.title}>Witaj ponownie! 👋</Text>
+              <Text style={styles.subtitle}>Zaloguj się do swojego konta</Text>
+            </View>
+
+            {/* Error Message Banner */}
+            {loginError ? (
+              <View style={styles.errorBanner}>
+                <Ionicons name="alert-circle" size={20} color="#d32f2f" />
+                <Text style={styles.errorBannerText}>{loginError}</Text>
+              </View>
+            ) : null}
+
+            <View style={styles.form}>
+              <Input
+                label="Nazwa użytkownika"
+                placeholder="Wpisz nazwę użytkownika"
+                value={username}
+                onChangeText={(text) => {
+                  setUsername(text);
+                  setErrors({ ...errors, username: undefined });
+                  setLoginError(''); // Clear error on input
+                }}
+                error={errors.username}
+                icon="person-outline"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+
+              <Input
+                label="Hasło"
+                placeholder="Wpisz hasło"
+                value={password}
+                onChangeText={(text) => {
+                  setPassword(text);
+                  setErrors({ ...errors, password: undefined });
+                  setLoginError(''); // Clear error on input
+                }}
+                error={errors.password}
+                icon="lock-closed-outline"
+                isPassword
+              />
+
+              {/* Forgot Password Link */}
+              <TouchableOpacity 
+                style={styles.forgotPassword}
+                onPress={() => {
+                  // TODO: Implement forgot password
+                  if (isWeb) {
+                    window.alert('Funkcja odzyskiwania hasła będzie wkrótce dostępna');
+                  } else {
+                    Alert.alert('Info', 'Funkcja odzyskiwania hasła będzie wkrótce dostępna');
+                  }
+                }}
+              >
+                <Text style={styles.forgotPasswordText}>Zapomniałeś hasła?</Text>
+              </TouchableOpacity>
+
+              <Button
+                title="Zaloguj się"
+                onPress={handleLogin}
+                loading={loading}
+                style={styles.loginButton}
+              />
+
+              {/* Divider */}
+              <View style={styles.dividerContainer}>
+                <View style={styles.divider} />
+                <Text style={styles.dividerText}>lub</Text>
+                <View style={styles.divider} />
               </View>
 
-              {/* Login Card */}
-              <View style={[styles.card, isLargeScreen && styles.cardLarge]}>
-                <View style={styles.cardHeader}>
-                  <Text style={styles.title}>Witaj ponownie! 👋</Text>
-                  <Text style={styles.subtitle}>Zaloguj się do swojego konta</Text>
-                </View>
-
-                <View style={styles.form}>
-                  <Input
-                    label="Nazwa użytkownika"
-                    placeholder="Wpisz nazwę użytkownika"
-                    value={username}
-                    onChangeText={(text) => {
-                      setUsername(text);
-                      setErrors({ ...errors, username: undefined });
-                    }}
-                    error={errors.username}
-                    icon="person-outline"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-
-                  <Input
-                    label="Hasło"
-                    placeholder="Wpisz hasło"
-                    value={password}
-                    onChangeText={(text) => {
-                      setPassword(text);
-                      setErrors({ ...errors, password: undefined });
-                    }}
-                    error={errors.password}
-                    icon="lock-closed-outline"
-                    isPassword
-                  />
-
-                  {/* Forgot Password Link */}
-                  <TouchableOpacity 
-                    style={styles.forgotPassword}
-                    onPress={() => {
-                      // TODO: Implement forgot password
-                      Alert.alert('Info', 'Funkcja odzyskiwania hasła będzie wkrótce dostępna');
-                    }}
-                  >
-                    <Text style={styles.forgotPasswordText}>Zapomniałeś hasła?</Text>
-                  </TouchableOpacity>
-
-                  <Button
-                    title="Zaloguj się"
-                    onPress={handleLogin}
-                    loading={loading}
-                    style={styles.loginButton}
-                  />
-
-                  {/* Divider */}
-                  <View style={styles.dividerContainer}>
-                    <View style={styles.divider} />
-                    <Text style={styles.dividerText}>lub</Text>
-                    <View style={styles.divider} />
-                  </View>
-
-                  {/* Register Link */}
-                  <View style={styles.registerContainer}>
-                    <Text style={styles.registerText}>Nie masz konta? </Text>
-                    <TouchableOpacity onPress={() => router.push('/(auth)/register')}>
-                      <Text style={styles.registerLink}>Zarejestruj się</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
+              {/* Register Link */}
+              <View style={styles.registerContainer}>
+                <Text style={styles.registerText}>Nie masz konta? </Text>
+                <TouchableOpacity onPress={() => router.push('/(auth)/register')}>
+                  <Text style={styles.registerLink}>Zarejestruj się</Text>
+                </TouchableOpacity>
               </View>
+            </View>
+          </View>
 
-              {/* Footer */}
-              <View style={styles.footer}>
-                <Text style={styles.footerText}>
-                  © 2025 Sessly. Wszystkie prawa zastrzeżone.
-                </Text>
-              </View>
-            </ScrollView>
-       </KeyboardAvoidingView>
+          {/* Footer */}
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>
+              © 2025 Sessly. Wszystkie prawa zastrzeżone.
+            </Text>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </View>
   );
 }
@@ -298,6 +324,24 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 15,
     color: '#666',
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffebee',
+    borderLeftWidth: 4,
+    borderLeftColor: '#d32f2f',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginBottom: 20,
+    gap: 10,
+  },
+  errorBannerText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#c62828',
+    fontWeight: '500',
   },
   form: {
     width: '100%',

@@ -11,6 +11,7 @@ import {
   Platform,
   Dimensions,
   Linking,
+  Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -172,6 +173,45 @@ export default function BusinessDetailScreen() {
     Linking.openURL(url);
   };
 
+  // ✅ NEW: Share business
+  const handleShare = async () => {
+    if (!business) return;
+
+    try {
+      const address = `${(business as any).address_line1 || business.address || ''}, ${(business as any).city || ''}`.trim().replace(/^,\s*/, '');
+      const phone = (business as any).phone_number || business.phone || '';
+      
+      let message = `🏢 Sprawdź: ${business.name}\n`;
+      
+      if (address) {
+        message += `📍 ${address}\n`;
+      }
+      
+      if (phone) {
+        message += `📞 ${phone}\n`;
+      }
+      
+      if (services.length > 0) {
+        message += `✂️ ${services.length} ${services.length === 1 ? 'usługa' : 'usług'}\n`;
+      }
+      
+      // Add app link (placeholder - you can add real deep link later)
+      message += `\n🔗 Zarezerwuj teraz w Sessly!`;
+
+      const result = await Share.share({
+        message: message,
+        title: `${business.name} - Sessly`,
+      });
+
+      if (result.action === Share.sharedAction) {
+        console.log('✅ [BusinessDetail] Business shared successfully');
+      }
+    } catch (error: any) {
+      console.error('❌ [BusinessDetail] Share error:', error);
+      Alert.alert('Błąd', 'Nie udało się udostępnić');
+    }
+  };
+
   // Loading state
   if (loading) {
     return (
@@ -249,9 +289,16 @@ export default function BusinessDetailScreen() {
         >
           {/* Header */}
           <LinearGradient colors={[Colors.gradientStart, Colors.gradientEnd]} style={styles.header}>
-            <TouchableOpacity onPress={() => router.back()} style={styles.iconButton}>
-              <Ionicons name="arrow-back" size={24} color="#fff" />
-            </TouchableOpacity>
+            {/* ✅ NEW: Top buttons row */}
+            <View style={styles.topButtons}>
+              <TouchableOpacity onPress={() => router.back()} style={styles.iconButton}>
+                <Ionicons name="arrow-back" size={24} color="#fff" />
+              </TouchableOpacity>
+              
+              <TouchableOpacity onPress={handleShare} style={styles.iconButton}>
+                <Ionicons name="share-outline" size={24} color="#fff" />
+              </TouchableOpacity>
+            </View>
 
             <View style={styles.headerContent}>
               <View style={styles.avatarWrap}>
@@ -440,6 +487,12 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
   },
+  // ✅ NEW: Top buttons row
+  topButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
   iconButton: {
     width: 40,
     height: 40,
@@ -447,7 +500,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.3)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 16,
   },
   headerContent: {
     flexDirection: 'row',

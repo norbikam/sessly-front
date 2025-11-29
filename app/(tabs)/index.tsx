@@ -7,7 +7,9 @@ import {
   TouchableOpacity, 
   RefreshControl, 
   ActivityIndicator,
-  Platform 
+  Platform,
+  Linking,
+  ScrollView
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
@@ -21,6 +23,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Colors from '../../constants/Colors';
 import SearchBar from '../../components/search/SearchBar';
 import CategoryFilter from '../../components/categories/CategoryFilter';
+import { BusinessListSkeleton } from '@/components/skeletons/SkeletonLoader';
 
 // Debounce hook
 function useDebounce<T>(value: T, delay: number): T {
@@ -126,7 +129,18 @@ export default function HomeScreen() {
     });
   };
 
-  // ✅ useCallback - stabilne handlery (nie tworzą nowych funkcji przy każdym renderze)
+  // ✅ Quick Actions
+  const handleCallPress = (phone: string, e: any) => {
+    e.stopPropagation();
+    Linking.openURL(`tel:${phone}`);
+  };
+
+  const handleWebsitePress = (url: string, e: any) => {
+    e.stopPropagation();
+    Linking.openURL(url);
+  };
+
+  // ✅ useCallback - stabilne handlery
   const handleCategorySelect = useCallback((categorySlug: string) => {
     console.log('🔵 [HomeScreen] Category selected:', categorySlug);
     setSelectedCategory(categorySlug);
@@ -145,10 +159,23 @@ export default function HomeScreen() {
     setSelectedCategory('all');
   }, []);
 
-  // ✅ Memoized business card renderer
+  // ✅ ENHANCED Business Card Renderer
   const renderBusiness = useCallback(({ item }: { item: Business }) => {
     // Get category name for display
     const categoryDisplay = categories.find(cat => cat.slug === item.category)?.name || item.category || 'Usługa';
+    
+    // Get contact info from item
+    const phone = (item as any).phone_number || item.phone || '';
+    const email = (item as any).email || '';
+    const website = (item as any).website_url || (item as any).website || '';
+    const city = (item as any).city || '';
+    const address = (item as any).address_line1 || item.address || '';
+    
+    const fullAddress = city ? `${address}, ${city}` : address;
+    
+    // Check if business has services
+    const services = (item as any).services || [];
+    const servicesCount = services.length;
     
     return (
       <TouchableOpacity 
@@ -171,14 +198,53 @@ export default function HomeScreen() {
           </Text>
         )}
         
-        <View style={styles.footer}>
-          <View style={styles.addressContainer}>
+        {/* Address */}
+        {fullAddress ? (
+          <View style={styles.infoRow}>
             <Ionicons name="location-outline" size={16} color="#666" />
-            <Text style={styles.address}>
-              {(item as any).city || (item as any).address_line1 || item.address || 'Brak adresu'}
+            <Text style={styles.infoText} numberOfLines={1}>
+              {fullAddress}
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={20} color="#999" />
+        ) : null}
+        
+        {/* Services count */}
+        {servicesCount > 0 && (
+          <View style={styles.infoRow}>
+            <Ionicons name="cut-outline" size={16} color="#666" />
+            <Text style={styles.infoText}>
+              {servicesCount} {servicesCount === 1 ? 'usługa' : 'usług'}
+            </Text>
+          </View>
+        )}
+        
+        {/* Quick Actions */}
+        <View style={styles.actionsRow}>
+          {phone ? (
+            <TouchableOpacity 
+              style={styles.actionButton}
+              onPress={(e) => handleCallPress(phone, e)}
+            >
+              <Ionicons name="call-outline" size={18} color={Colors.accent} />
+              <Text style={styles.actionText}>Zadzwoń</Text>
+            </TouchableOpacity>
+          ) : null}
+          
+          {website ? (
+            <TouchableOpacity 
+              style={styles.actionButton}
+              onPress={(e) => handleWebsitePress(website, e)}
+            >
+              <Ionicons name="globe-outline" size={18} color={Colors.accent} />
+              <Text style={styles.actionText}>Strona</Text>
+            </TouchableOpacity>
+          ) : null}
+          
+          <View style={styles.actionSpacer} />
+          
+          <View style={styles.chevronContainer}>
+            <Ionicons name="chevron-forward" size={20} color="#999" />
+          </View>
         </View>
       </TouchableOpacity>
     );
@@ -186,7 +252,7 @@ export default function HomeScreen() {
 
   // ✅ Memoized empty state
   const renderEmpty = useMemo(() => {
-    if (searching) {
+    if (searching || loading) {
       return null;
     }
 
@@ -217,9 +283,9 @@ export default function HomeScreen() {
         )}
       </View>
     );
-  }, [searching, searchQuery, selectedCategory, handleClearAllFilters]);
+  }, [searching, loading, searchQuery, selectedCategory, handleClearAllFilters]);
 
-  // ✅ Memoized header (KLUCZOWE dla inputa!)
+  // ✅ Memoized header
   const renderHeader = useMemo(() => (
     <>
       {/* Search Bar */}
@@ -266,11 +332,24 @@ export default function HomeScreen() {
     handleClearAllFilters,
   ]);
 
+  // ✅ NEW: Skeleton loading state
   if (loading) {
     return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color={Colors.accent} />
-        <Text style={styles.loadingText}>Ładowanie...</Text>
+      <View style={styles.container}>
+        {/* Header with greeting */}
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.greeting}>
+              Cześć{user?.first_name ? `, ${user.first_name}` : ''}! 👋
+            </Text>
+            <Text style={styles.subtitle}>Znajdź swoją usługę</Text>
+          </View>
+        </View>
+
+        <ScrollView style={styles.skeletonContainer} contentContainerStyle={styles.list}>
+          {renderHeader}
+          <BusinessListSkeleton count={5} />
+        </ScrollView>
       </View>
     );
   }
@@ -303,7 +382,6 @@ export default function HomeScreen() {
           />
         }
         showsVerticalScrollIndicator={true}
-        // ✅ Performance optimizations
         removeClippedSubviews={Platform.OS === 'android'}
         maxToRenderPerBatch={10}
         updateCellsBatchingPeriod={50}
@@ -317,6 +395,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.light.background,
+  },
+  skeletonContainer: {
+    flex: 1,
   },
   centerContainer: {
     flex: 1,
@@ -368,6 +449,7 @@ const styles = StyleSheet.create({
   list: {
     padding: 16,
   },
+  // ✅ ENHANCED CARD STYLES
   card: {
     backgroundColor: '#fff',
     borderRadius: 16,
@@ -413,21 +495,48 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     lineHeight: 20,
   },
-  footer: {
+  // ✅ NEW: Info rows
+  infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    marginBottom: 8,
+    gap: 8,
   },
-  addressContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  address: {
-    fontSize: 12,
+  infoText: {
+    fontSize: 13,
     color: '#666',
-    marginLeft: 4,
     flex: 1,
+  },
+  // ✅ NEW: Actions row
+  actionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F0F0F0',
+    gap: 12,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#FFF5F0',
+    gap: 6,
+  },
+  actionText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.accent,
+  },
+  actionSpacer: {
+    flex: 1,
+  },
+  chevronContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   emptyContainer: {
     alignItems: 'center',

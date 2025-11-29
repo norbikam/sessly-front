@@ -33,6 +33,7 @@ type AuthContextType = {
   login: (credentials: Credentials) => Promise<void>;
   register: (data: RegisterData) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
+  updateUser: (userData: Partial<User>) => Promise<void>; // ✅ NEW
   isLoading: boolean;
 };
 
@@ -132,12 +133,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // ✅ NEW: Update user data
+  const updateUser = async (userData: Partial<User>) => {
+    try {
+      if (!user) throw new Error('No user logged in');
+
+      // Merge new data with existing user
+      const updatedUser = { ...user, ...userData };
+
+      // Save to AsyncStorage
+      await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
+
+      // Update state
+      setUser(updatedUser);
+
+      console.log('✅ [AuthContext] User updated:', updatedUser);
+    } catch (error) {
+      console.error('❌ [AuthContext] Update user error:', error);
+      throw error;
+    }
+  };
+
   const value: AuthContextType = {
     user,
     isLoggedIn: !!user,
     login,
     register,
     logout,
+    updateUser, // ✅ NEW
     isLoading,
   };
 

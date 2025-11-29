@@ -389,7 +389,11 @@ export default function AccountScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Ustawienia</Text>
         
-        <TouchableOpacity style={styles.menuItem}>
+        {/* ✅ NEW: Edit Profile Link */}
+        <TouchableOpacity 
+          style={styles.menuItem}
+          onPress={() => router.push('/account/edit-profile' as any)}
+        >
           <Ionicons name="person-outline" size={24} color="#666" />
           <Text style={styles.menuItemText}>Edytuj profil</Text>
           <Ionicons name="chevron-forward" size={20} color="#ccc" />
@@ -416,6 +420,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.light.background,
+    paddingTop: Platform.OS === 'web'? 0 : 35,
   },
   scrollContent: {
     paddingBottom: 20,
