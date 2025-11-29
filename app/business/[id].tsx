@@ -12,6 +12,7 @@ import {
   Dimensions,
   Linking,
   Share,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -23,6 +24,7 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import Colors from '../../constants/Colors';
 import { createAppointment } from '@/api/appointments';
 import { useAuth } from '../../contexts/AuthContext';
+import { useFavorites } from '../../contexts/FavoritesContext';
 import OpeningHoursCard from '../../components/business/OpeningHoursCard';
 import BookingModal from '../../components/booking/BookingModal';
 
@@ -32,6 +34,8 @@ export default function BusinessDetailScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const { user, isLoggedIn } = useAuth();
+  const { isFavorite, toggleFavorite } = useFavorites();
+  
   const [business, setBusiness] = useState<Business | null>(null);
   const [services, setServices] = useState<Service[]>([]);
   const [hours, setHours] = useState<any[]>([]);
@@ -42,6 +46,12 @@ export default function BusinessDetailScreen() {
   // Booking Modal State
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
+
+  // Favorite animation
+  const favoriteScale = useState(new Animated.Value(1))[0];
+
+  const businessId = business?.slug || String(id);
+  const favorite = isFavorite(businessId);
 
   const fetchBusiness = useCallback(async () => {
     if (!id) {
@@ -173,7 +183,7 @@ export default function BusinessDetailScreen() {
     Linking.openURL(url);
   };
 
-  // ✅ NEW: Share business
+  // ✅ Handle Share
   const handleShare = async () => {
     if (!business) return;
 
@@ -195,7 +205,6 @@ export default function BusinessDetailScreen() {
         message += `✂️ ${services.length} ${services.length === 1 ? 'usługa' : 'usług'}\n`;
       }
       
-      // Add app link (placeholder - you can add real deep link later)
       message += `\n🔗 Zarezerwuj teraz w Sessly!`;
 
       const result = await Share.share({
@@ -210,6 +219,27 @@ export default function BusinessDetailScreen() {
       console.error('❌ [BusinessDetail] Share error:', error);
       Alert.alert('Błąd', 'Nie udało się udostępnić');
     }
+  };
+
+  // ✅ Handle Favorite Toggle
+  const handleFavoriteToggle = () => {
+    if (!business) return;
+    
+    // Animate
+    Animated.sequence([
+      Animated.timing(favoriteScale, {
+        toValue: 1.3,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(favoriteScale, {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    toggleFavorite(businessId);
   };
 
   // Loading state
@@ -289,15 +319,31 @@ export default function BusinessDetailScreen() {
         >
           {/* Header */}
           <LinearGradient colors={[Colors.gradientStart, Colors.gradientEnd]} style={styles.header}>
-            {/* ✅ NEW: Top buttons row */}
+            {/* Top buttons row */}
             <View style={styles.topButtons}>
               <TouchableOpacity onPress={() => router.back()} style={styles.iconButton}>
                 <Ionicons name="arrow-back" size={24} color="#fff" />
               </TouchableOpacity>
               
-              <TouchableOpacity onPress={handleShare} style={styles.iconButton}>
-                <Ionicons name="share-outline" size={24} color="#fff" />
-              </TouchableOpacity>
+              <View style={styles.rightButtons}>
+                {/* ✨ Favorite Button */}
+                <TouchableOpacity 
+                  onPress={handleFavoriteToggle} 
+                  style={styles.iconButton}
+                >
+                  <Animated.View style={{ transform: [{ scale: favoriteScale }] }}>
+                    <Ionicons 
+                      name={favorite ? "heart" : "heart-outline"} 
+                      size={24} 
+                      color={favorite ? "#e74c3c" : "#fff"} 
+                    />
+                  </Animated.View>
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={handleShare} style={styles.iconButton}>
+                  <Ionicons name="share-outline" size={24} color="#fff" />
+                </TouchableOpacity>
+              </View>
             </View>
 
             <View style={styles.headerContent}>
@@ -487,11 +533,14 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
   },
-  // ✅ NEW: Top buttons row
   topButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 16,
+  },
+  rightButtons: {
+    flexDirection: 'row',
+    gap: 8,
   },
   iconButton: {
     width: 40,

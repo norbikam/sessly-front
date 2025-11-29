@@ -8,11 +8,12 @@ import {
   RefreshControl, 
   ActivityIndicator,
   Platform,
-  Linking,
-  ScrollView
+  Pressable,
+  Animated
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
+import { useFavorites } from '../../contexts/FavoritesContext';
 import { 
   searchBusinesses, 
   getBusinessCategories,
@@ -23,7 +24,6 @@ import { Ionicons } from '@expo/vector-icons';
 import Colors from '../../constants/Colors';
 import SearchBar from '../../components/search/SearchBar';
 import CategoryFilter from '../../components/categories/CategoryFilter';
-import { BusinessListSkeleton } from '@/components/skeletons/SkeletonLoader';
 
 // Debounce hook
 function useDebounce<T>(value: T, delay: number): T {
@@ -42,9 +42,49 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
+// ✨ Animated Heart Component
+function AnimatedHeart({ isFavorite, onPress }: { isFavorite: boolean; onPress: () => void }) {
+  const scale = useState(new Animated.Value(1))[0];
+
+  const handlePress = () => {
+    // Animate scale
+    Animated.sequence([
+      Animated.timing(scale, {
+        toValue: 1.3,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scale, {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
+    onPress();
+  };
+
+  return (
+    <Pressable
+      onPress={handlePress}
+      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      style={styles.favoriteButton}
+    >
+      <Animated.View style={{ transform: [{ scale }] }}>
+        <Ionicons 
+          name={isFavorite ? "heart" : "heart-outline"} 
+          size={26} 
+          color={isFavorite ? "#e74c3c" : "#ccc"} 
+        />
+      </Animated.View>
+    </Pressable>
+  );
+}
+
 export default function HomeScreen() {
   const router = useRouter();
   const { user } = useAuth();
+  const { isFavorite, toggleFavorite } = useFavorites();
   
   // State
   const [businesses, setBusinesses] = useState<Business[]>([]);
@@ -129,15 +169,8 @@ export default function HomeScreen() {
     });
   };
 
-  // ✅ Quick Actions
-  const handleCallPress = (phone: string, e: any) => {
-    e.stopPropagation();
-    Linking.openURL(`tel:${phone}`);
-  };
-
-  const handleWebsitePress = (url: string, e: any) => {
-    e.stopPropagation();
-    Linking.openURL(url);
+  const handleFavoritePress = (businessId: string) => {
+    toggleFavorite(businessId);
   };
 
   // ✅ useCallback - stabilne handlery
@@ -159,36 +192,35 @@ export default function HomeScreen() {
     setSelectedCategory('all');
   }, []);
 
-  // ✅ ENHANCED Business Card Renderer
+  // ✅ Enhanced business card with favorite button
   const renderBusiness = useCallback(({ item }: { item: Business }) => {
-    // Get category name for display
     const categoryDisplay = categories.find(cat => cat.slug === item.category)?.name || item.category || 'Usługa';
-    
-    // Get contact info from item
-    const phone = (item as any).phone_number || item.phone || '';
-    const email = (item as any).email || '';
-    const website = (item as any).website_url || (item as any).website || '';
-    const city = (item as any).city || '';
-    const address = (item as any).address_line1 || item.address || '';
-    
-    const fullAddress = city ? `${address}, ${city}` : address;
-    
-    // Check if business has services
-    const services = (item as any).services || [];
-    const servicesCount = services.length;
+    const businessId = item.slug || String(item.id);
+    const favorite = isFavorite(businessId);
     
     return (
       <TouchableOpacity 
         style={styles.card}
         onPress={() => handleBusinessPress(item)}
+        activeOpacity={0.8}
       >
+        {/* ✨ Favorite Button - Top Right Corner */}
+        <View style={styles.favoriteContainer}>
+          <AnimatedHeart 
+            isFavorite={favorite} 
+            onPress={() => handleFavoritePress(businessId)} 
+          />
+        </View>
+
         <View style={styles.cardHeader}>
           <View style={styles.iconContainer}>
-            <Ionicons name="business" size={24} color={Colors.accent} />
+            <Ionicons name="business" size={28} color={Colors.accent} />
           </View>
           <View style={styles.cardInfo}>
-            <Text style={styles.businessName}>{item.name}</Text>
-            <Text style={styles.category}>{categoryDisplay}</Text>
+            <Text style={styles.businessName} numberOfLines={1}>{item.name}</Text>
+            <View style={styles.categoryBadge}>
+              <Text style={styles.category}>{categoryDisplay}</Text>
+            </View>
           </View>
         </View>
         
@@ -198,61 +230,22 @@ export default function HomeScreen() {
           </Text>
         )}
         
-        {/* Address */}
-        {fullAddress ? (
-          <View style={styles.infoRow}>
-            <Ionicons name="location-outline" size={16} color="#666" />
-            <Text style={styles.infoText} numberOfLines={1}>
-              {fullAddress}
+        <View style={styles.footer}>
+          <View style={styles.addressContainer}>
+            <Ionicons name="location" size={16} color={Colors.accent} />
+            <Text style={styles.address} numberOfLines={1}>
+              {(item as any).city || (item as any).address_line1 || item.address || 'Brak adresu'}
             </Text>
           </View>
-        ) : null}
-        
-        {/* Services count */}
-        {servicesCount > 0 && (
-          <View style={styles.infoRow}>
-            <Ionicons name="cut-outline" size={16} color="#666" />
-            <Text style={styles.infoText}>
-              {servicesCount} {servicesCount === 1 ? 'usługa' : 'usług'}
-            </Text>
-          </View>
-        )}
-        
-        {/* Quick Actions */}
-        <View style={styles.actionsRow}>
-          {phone ? (
-            <TouchableOpacity 
-              style={styles.actionButton}
-              onPress={(e) => handleCallPress(phone, e)}
-            >
-              <Ionicons name="call-outline" size={18} color={Colors.accent} />
-              <Text style={styles.actionText}>Zadzwoń</Text>
-            </TouchableOpacity>
-          ) : null}
-          
-          {website ? (
-            <TouchableOpacity 
-              style={styles.actionButton}
-              onPress={(e) => handleWebsitePress(website, e)}
-            >
-              <Ionicons name="globe-outline" size={18} color={Colors.accent} />
-              <Text style={styles.actionText}>Strona</Text>
-            </TouchableOpacity>
-          ) : null}
-          
-          <View style={styles.actionSpacer} />
-          
-          <View style={styles.chevronContainer}>
-            <Ionicons name="chevron-forward" size={20} color="#999" />
-          </View>
+          <Ionicons name="chevron-forward" size={22} color="#ddd" />
         </View>
       </TouchableOpacity>
     );
-  }, [categories]);
+  }, [categories, isFavorite]);
 
   // ✅ Memoized empty state
   const renderEmpty = useMemo(() => {
-    if (searching || loading) {
+    if (searching) {
       return null;
     }
 
@@ -263,7 +256,7 @@ export default function HomeScreen() {
         <Ionicons 
           name={hasFilters ? "search-outline" : "business-outline"} 
           size={64} 
-          color="#ccc" 
+          color="#ddd" 
         />
         <Text style={styles.emptyText}>
           {hasFilters ? 'Brak wyników' : 'Brak dostępnych firm'}
@@ -283,7 +276,7 @@ export default function HomeScreen() {
         )}
       </View>
     );
-  }, [searching, loading, searchQuery, selectedCategory, handleClearAllFilters]);
+  }, [searching, searchQuery, selectedCategory, handleClearAllFilters]);
 
   // ✅ Memoized header
   const renderHeader = useMemo(() => (
@@ -332,24 +325,11 @@ export default function HomeScreen() {
     handleClearAllFilters,
   ]);
 
-  // ✅ NEW: Skeleton loading state
   if (loading) {
     return (
-      <View style={styles.container}>
-        {/* Header with greeting */}
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.greeting}>
-              Cześć{user?.first_name ? `, ${user.first_name}` : ''}! 👋
-            </Text>
-            <Text style={styles.subtitle}>Znajdź swoją usługę</Text>
-          </View>
-        </View>
-
-        <ScrollView style={styles.skeletonContainer} contentContainerStyle={styles.list}>
-          {renderHeader}
-          <BusinessListSkeleton count={5} />
-        </ScrollView>
+      <View style={styles.centerContainer}>
+        <ActivityIndicator size="large" color={Colors.accent} />
+        <Text style={styles.loadingText}>Ładowanie...</Text>
       </View>
     );
   }
@@ -395,9 +375,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.light.background,
-  },
-  skeletonContainer: {
-    flex: 1,
   },
   centerContainer: {
     flex: 1,
@@ -449,31 +426,51 @@ const styles = StyleSheet.create({
   list: {
     padding: 16,
   },
-  // ✅ ENHANCED CARD STYLES
   card: {
     backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 20,
+    padding: 18,
     marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 4,
+    position: 'relative',
+  },
+  favoriteContainer: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    zIndex: 10,
+  },
+  favoriteButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 8,
+    shadowRadius: 4,
     elevation: 3,
   },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 12,
+    paddingRight: 44, // Make space for heart
   },
   iconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
+    width: 56,
+    height: 56,
+    borderRadius: 16,
     backgroundColor: '#FFF5F0',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 14,
   },
   cardInfo: {
     flex: 1,
@@ -482,61 +479,46 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: '#333',
-    marginBottom: 2,
+    marginBottom: 6,
+  },
+  categoryBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#FFF5F0',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
   category: {
-    fontSize: 14,
+    fontSize: 12,
     color: Colors.accent,
-    fontWeight: '600',
+    fontWeight: '700',
+    textTransform: 'uppercase',
   },
   description: {
     fontSize: 14,
     color: '#666',
-    marginBottom: 12,
-    lineHeight: 20,
+    marginBottom: 14,
+    lineHeight: 21,
   },
-  // ✅ NEW: Info rows
-  infoRow: {
+  footer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
-    gap: 8,
-  },
-  infoText: {
-    fontSize: 13,
-    color: '#666',
-    flex: 1,
-  },
-  // ✅ NEW: Actions row
-  actionsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
+    justifyContent: 'space-between',
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
-    gap: 12,
+    borderTopColor: '#f0f0f0',
   },
-  actionButton: {
+  addressContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    backgroundColor: '#FFF5F0',
+    flex: 1,
     gap: 6,
   },
-  actionText: {
+  address: {
     fontSize: 13,
-    fontWeight: '600',
-    color: Colors.accent,
-  },
-  actionSpacer: {
+    color: '#888',
     flex: 1,
-  },
-  chevronContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
+    fontWeight: '500',
   },
   emptyContainer: {
     alignItems: 'center',

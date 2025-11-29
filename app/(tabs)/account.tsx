@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,15 +13,21 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
+import { useFavorites } from '../../contexts/FavoritesContext';
 import { getUserAppointments, cancelAppointment } from '../../api/appointments';
-import { Appointment } from '../../types/api';
+import { searchBusinesses } from '../../api/business';
+import { Appointment, Business } from '../../types/api';
 import { router } from 'expo-router';
 import Colors from '../../constants/Colors';
 
 export default function AccountScreen() {
   const { user, isLoggedIn, logout } = useAuth();
+  const { favorites, isFavorite, toggleFavorite } = useFavorites();
+  
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [favoriteBusinesses, setFavoriteBusinesses] = useState<Business[]>([]);
   const [loading, setLoading] = useState(false);
+  const [favoritesLoading, setFavoritesLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,6 +40,35 @@ export default function AccountScreen() {
       console.log('⚠️ [AccountScreen] User not logged in');
     }
   }, [isLoggedIn]);
+
+  // Load favorite businesses when favorites change
+  useEffect(() => {
+    if (favorites.length > 0) {
+      loadFavoriteBusinesses();
+    } else {
+      setFavoriteBusinesses([]);
+    }
+  }, [favorites]);
+
+  const loadFavoriteBusinesses = async () => {
+    try {
+      setFavoritesLoading(true);
+      console.log('📤 [AccountScreen] Loading favorite businesses...');
+      
+      // Fetch all businesses and filter by favorites
+      const allBusinesses = await searchBusinesses();
+      const favs = allBusinesses.filter((b) => 
+        favorites.includes(b.slug || String(b.id))
+      );
+      
+      console.log('✅ [AccountScreen] Favorite businesses loaded:', favs.length);
+      setFavoriteBusinesses(favs);
+    } catch (error) {
+      console.error('❌ [AccountScreen] Error loading favorites:', error);
+    } finally {
+      setFavoritesLoading(false);
+    }
+  };
 
   const fetchAppointments = async () => {
     try {
@@ -68,11 +103,11 @@ export default function AccountScreen() {
   };
 
   const onRefresh = useCallback(async () => {
-    console.log('🔄 [AccountScreen] Refreshing appointments...');
+    console.log('🔄 [AccountScreen] Refreshing...');
     setRefreshing(true);
-    await fetchAppointments();
+    await Promise.all([fetchAppointments(), loadFavoriteBusinesses()]);
     setRefreshing(false);
-  }, []);
+  }, [favorites]);
 
   const handleCancelAppointment = (appointment: Appointment) => {
     console.log('🔵 [AccountScreen] Cancel appointment clicked:', appointment.id);
@@ -224,15 +259,29 @@ export default function AccountScreen() {
     }
   };
 
+  const handleBusinessPress = (business: Business) => {
+    router.push({
+      pathname: '/business/[id]',
+      params: { id: business.slug || String(business.id) },
+    });
+  };
+
+  const handleRemoveFavorite = (business: Business) => {
+    const businessId = business.slug || String(business.id);
+    toggleFavorite(businessId);
+  };
+
   // Ekran dla niezalogowanego użytkownika
   if (!isLoggedIn) {
     return (
       <View style={styles.container}>
         <View style={styles.notLoggedInContainer}>
-          <Ionicons name="person-circle-outline" size={80} color={Colors.accent} />
-          <Text style={styles.title}>Zaloguj się</Text>
+          <View style={styles.notLoggedInIcon}>
+            <Ionicons name="person-circle-outline" size={100} color={Colors.accent} />
+          </View>
+          <Text style={styles.title}>Witaj w Sessly!</Text>
           <Text style={styles.subtitle}>
-            Aby zobaczyć swoje rezerwacje i profil, musisz się zalogować.
+            Zaloguj się aby zarządzać swoimi rezerwacjami i ulubionymi miejscami
           </Text>
           <TouchableOpacity
             style={styles.loginButton}
@@ -282,11 +331,87 @@ export default function AccountScreen() {
             : user?.username || user?.email}
         </Text>
         <Text style={styles.userEmail}>{user?.email}</Text>
+        
+        {/* Quick Stats */}
+        <View style={styles.statsRow}>
+          <View style={styles.statBox}>
+            <Text style={styles.statNumber}>{appointments.length}</Text>
+            <Text style={styles.statLabel}>Rezerwacje</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statBox}>
+            <Text style={styles.statNumber}>{favorites.length}</Text>
+            <Text style={styles.statLabel}>Ulubione</Text>
+          </View>
+        </View>
       </View>
+
+      {/* ⭐ ULUBIONE BIZNESY */}
+      {favorites.length > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="heart" size={22} color="#e74c3c" />
+            <Text style={styles.sectionTitle}>Ulubione miejsca</Text>
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>{favorites.length}</Text>
+            </View>
+          </View>
+
+          {favoritesLoading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color={Colors.accent} />
+              <Text style={styles.loadingText}>Ładowanie...</Text>
+            </View>
+          ) : favoriteBusinesses.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Ionicons name="heart-outline" size={48} color="#ddd" />
+              <Text style={styles.emptyStateText}>Brak ulubionych miejsc</Text>
+            </View>
+          ) : (
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.favoritesScroll}
+            >
+              {favoriteBusinesses.map((business) => {
+                const businessId = business.slug || String(business.id);
+                return (
+                  <TouchableOpacity
+                    key={businessId}
+                    style={styles.favoriteCard}
+                    onPress={() => handleBusinessPress(business)}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.favoriteCardHeader}>
+                      <View style={styles.favoriteIconContainer}>
+                        <Ionicons name="business" size={24} color={Colors.accent} />
+                      </View>
+                      <TouchableOpacity
+                        onPress={() => handleRemoveFavorite(business)}
+                        style={styles.removeFavoriteButton}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
+                        <Ionicons name="heart" size={20} color="#e74c3c" />
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.favoriteBusinessName} numberOfLines={2}>
+                      {business.name}
+                    </Text>
+                    <Text style={styles.favoriteBusinessAddress} numberOfLines={1}>
+                      {(business as any).city || 'Brak adresu'}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          )}
+        </View>
+      )}
 
       {/* Rezerwacje */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
+          <Ionicons name="calendar" size={22} color={Colors.accent} />
           <Text style={styles.sectionTitle}>Moje rezerwacje</Text>
           {appointments.length > 0 && (
             <View style={styles.badge}>
@@ -311,7 +436,7 @@ export default function AccountScreen() {
           </View>
         ) : appointments.length === 0 ? (
           <View style={styles.emptyState}>
-            <Ionicons name="calendar-outline" size={64} color="#ccc" />
+            <Ionicons name="calendar-outline" size={64} color="#ddd" />
             <Text style={styles.emptyStateTitle}>Brak rezerwacji</Text>
             <Text style={styles.emptyStateText}>
               Nie masz jeszcze żadnych rezerwacji. Znajdź biznes i umów wizytę!
@@ -389,7 +514,6 @@ export default function AccountScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Ustawienia</Text>
         
-        {/* ✅ NEW: Edit Profile Link */}
         <TouchableOpacity 
           style={styles.menuItem}
           onPress={() => router.push('/account/edit-profile' as any)}
@@ -420,7 +544,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.light.background,
-    paddingTop: Platform.OS === 'web'? 0 : 35,
   },
   scrollContent: {
     paddingBottom: 20,
@@ -430,6 +553,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 40,
+  },
+  notLoggedInIcon: {
+    marginBottom: 24,
   },
   profileSection: {
     backgroundColor: '#fff',
@@ -463,6 +589,36 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     marginTop: 4,
+    marginBottom: 20,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8f8f8',
+    borderRadius: 16,
+    padding: 16,
+    width: '100%',
+  },
+  statBox: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: '#ddd',
+  },
+  statNumber: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: Colors.accent,
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#999',
+    fontWeight: '600',
+    textTransform: 'uppercase',
   },
   section: {
     backgroundColor: '#fff',
@@ -472,7 +628,8 @@ const styles = StyleSheet.create({
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
+    gap: 8,
   },
   sectionTitle: {
     fontSize: 18,
@@ -493,9 +650,50 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  // ⭐ FAVORITES STYLES
+  favoritesScroll: {
+    paddingRight: 16,
+  },
+  favoriteCard: {
+    width: 160,
+    backgroundColor: '#f8f8f8',
+    borderRadius: 16,
+    padding: 14,
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: '#eee',
+  },
+  favoriteCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  favoriteIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  removeFavoriteButton: {
+    padding: 4,
+  },
+  favoriteBusinessName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: 6,
+    lineHeight: 18,
+  },
+  favoriteBusinessAddress: {
+    fontSize: 12,
+    color: '#999',
+  },
   loadingContainer: {
     alignItems: 'center',
-    paddingVertical: 40,
+    paddingVertical: 30,
   },
   loadingText: {
     marginTop: 12,
@@ -648,7 +846,6 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '700',
     textAlign: 'center',
-    marginTop: 20,
     marginBottom: 12,
     color: '#333',
   },
