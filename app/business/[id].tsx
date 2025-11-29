@@ -91,7 +91,23 @@ export default function BusinessDetailScreen() {
   };
 
   const handleBook = async (service: Service) => {
-    if (!isLoggedIn) {
+  console.log('🔵 [handleBook] START', { 
+    service: service.name, 
+    serviceId: service.id,
+    isLoggedIn,
+    businessSlug: business?.slug 
+  });
+
+  if (!isLoggedIn) {
+    console.log('⚠️ [handleBook] User not logged in');
+    
+    // ✅ ROZWIĄZANIE: Użyj window.confirm na web, Alert na mobile
+    if (Platform.OS === 'web') {
+      const shouldLogin = window.confirm('Musisz być zalogowany, aby dokonać rezerwacji.\n\nPrzejść do logowania?');
+      if (shouldLogin) {
+        router.push('/(auth)/login');
+      }
+    } else {
       Alert.alert(
         'Wymagane logowanie',
         'Musisz być zalogowany, aby dokonać rezerwacji.',
@@ -103,39 +119,138 @@ export default function BusinessDetailScreen() {
           },
         ]
       );
-      return;
     }
+    return;
+  }
 
-    if (!business?.slug) {
+  if (!business?.slug) {
+    console.log('❌ [handleBook] No business slug');
+    if (Platform.OS === 'web') {
+      window.alert('Nie można zarezerwować - brak danych biznesu');
+    } else {
       Alert.alert('Błąd', 'Nie można zarezerwować - brak danych biznesu');
+    }
+    return;
+  }
+
+  try {
+    const today = new Date();
+    const dateStr = today.toISOString().split('T')[0];
+
+    console.log('📅 [handleBook] Fetching availability', {
+      businessSlug: business.slug,
+      serviceId: service.id,
+      date: dateStr
+    });
+
+    const availability = await getAvailability(
+      business.slug,
+      String(service.id),
+      dateStr
+    );
+
+    console.log('✅ [handleBook] Availability response:', availability);
+
+    if (!availability.slots || availability.slots.length === 0) {
+      console.log('⚠️ [handleBook] No slots available');
+      if (Platform.OS === 'web') {
+        window.alert('Brak dostępności: Nie ma wolnych terminów na dzisiaj');
+      } else {
+        Alert.alert('Brak dostępności', 'Nie ma wolnych terminów na dzisiaj');
+      }
       return;
     }
 
-    try {
-      const today = new Date();
-      const dateStr = today.toISOString().split('T')[0];
+    console.log('📋 [handleBook] Showing slot selection', {
+      slotsCount: availability.slots.length
+    });
 
-      const availability = await getAvailability(
-        business.slug,
-        String(service.id),
-        dateStr
+    // ✅ NA WEB: Użyj prostego prompt/confirm zamiast Alert.alert
+    if (Platform.OS === 'web') {
+      const slotsList = availability.slots.map((s, i) => `${i + 1}. ${s.time}`).join('\n');
+      const selection = window.prompt(
+        `Wybierz godzinę dla: ${service.name}\nDostępne terminy na ${dateStr}:\n\n${slotsList}\n\nWpisz numer (1-${availability.slots.length}):`,
+        '1'
       );
 
-      if (!availability.slots || availability.slots.length === 0) {
-        Alert.alert('Brak dostępności', 'Nie ma wolnych terminów na dzisiaj');
+      if (selection === null) {
+        console.log('🚫 [handleBook] User cancelled slot selection');
+        return; // User clicked Cancel
+      }
+
+      const slotIndex = parseInt(selection) - 1;
+      if (isNaN(slotIndex) || slotIndex < 0 || slotIndex >= availability.slots.length) {
+        window.alert('Nieprawidłowy wybór. Wybierz liczbę od 1 do ' + availability.slots.length);
         return;
       }
 
+      const selectedSlot = availability.slots[slotIndex];
+      console.log('🎯 [handleBook] Slot selected', { slot: selectedSlot.time });
+
+      try {
+        console.log('📤 [handleBook] Creating appointment', {
+          businessSlug: business.slug,
+          serviceId: service.id,
+          date: dateStr,
+          startTime: selectedSlot.time
+        });
+
+        const appointment = await createAppointment(business.slug!, {
+          service_id: String(service.id),
+          date: dateStr,
+          start_time: selectedSlot.time,
+          notes: '',
+        });
+
+        console.log('✅ [handleBook] Appointment created', appointment);
+
+        const goToAccount = window.confirm(
+          `Sukces! 🎉\n\nRezerwacja ${service.name} została utworzona na ${dateStr} o ${selectedSlot.time}\n\nPrzejść do listy rezerwacji?`
+        );
+        
+        if (goToAccount) {
+          router.push('/(tabs)/account');
+        }
+
+      } catch (error: any) {
+        console.error('❌ [handleBook] Booking error:', error);
+        console.error('❌ [handleBook] Error details:', {
+          message: error?.message,
+          response: error?.response?.data,
+          status: error?.response?.status,
+        });
+
+        window.alert(
+          'Błąd rezerwacji:\n\n' +
+          (error?.response?.data?.detail ||
+          error?.response?.data?.message ||
+          error?.message ||
+          'Nie udało się utworzyć rezerwacji')
+        );
+      }
+
+    } else {
+      // ✅ NA MOBILE: Użyj Alert.alert (działa)
       const slotOptions = availability.slots.map((slot) => ({
         text: slot.time,
         onPress: async () => {
+          console.log('🎯 [handleBook] Slot selected (mobile)', { slot: slot.time });
           try {
+            console.log('📤 [handleBook] Creating appointment (mobile)', {
+              businessSlug: business.slug,
+              serviceId: service.id,
+              date: dateStr,
+              startTime: slot.time
+            });
+
             await createAppointment(business.slug!, {
               service_id: String(service.id),
               date: dateStr,
               start_time: slot.time,
               notes: '',
             });
+
+            console.log('✅ [handleBook] Appointment created (mobile)');
 
             Alert.alert(
               'Sukces! 🎉',
@@ -146,7 +261,13 @@ export default function BusinessDetailScreen() {
               ]
             );
           } catch (error: any) {
-            console.error('Booking error:', error);
+            console.error('❌ [handleBook] Booking error (mobile):', error);
+            console.error('❌ [handleBook] Error details (mobile):', {
+              message: error?.message,
+              response: error?.response?.data,
+              status: error?.response?.status,
+            });
+
             Alert.alert(
               'Błąd rezerwacji',
               error?.response?.data?.detail ||
@@ -165,9 +286,26 @@ export default function BusinessDetailScreen() {
           { text: 'Anuluj', style: 'cancel' },
         ]
       );
+    }
 
-    } catch (error: any) {
-      console.error('Availability error:', error);
+  } catch (error: any) {
+    console.error('❌ [handleBook] Availability error:', error);
+    console.error('❌ [handleBook] Error details:', {
+      message: error?.message,
+      response: error?.response?.data,
+      status: error?.response?.status,
+      config: error?.config,
+    });
+
+    if (Platform.OS === 'web') {
+      window.alert(
+        'Błąd pobierania dostępności:\n\n' +
+        (error?.response?.data?.detail ||
+        error?.response?.data?.message ||
+        error?.message ||
+        'Nie udało się pobrać dostępnych terminów')
+      );
+    } else {
       Alert.alert(
         'Błąd',
         error?.response?.data?.detail ||
@@ -175,7 +313,8 @@ export default function BusinessDetailScreen() {
         'Nie udało się pobrać dostępnych terminów'
       );
     }
-  };
+  }
+};
 
   const openPhone = (phone?: string) => {
     if (!phone) return;
@@ -247,13 +386,15 @@ export default function BusinessDetailScreen() {
   const address = `${(business as any).address_line1 || business.address || ''}, ${(business as any).city || ''}`.trim().replace(/^,\s*/, '');
   const desc = business.description || '';
 
-  // ✅ NAJPROSTSZE ROZWIĄZANIE - wszystko w ScrollView
+  // ✅ NAJPROSTSZE ROZWIĄZANIE - wszystko w ScrollView, BEZ flex: 1 na ScrollView
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
+      <View style={styles.scrollWrapper}>
       <ScrollView
-        style={styles.scrollView}
+      style={Platform.select({ web: {maxHeight: '100vh'} as any, default: undefined})}
         showsVerticalScrollIndicator={true}
         bounces={true}
+        contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl 
             refreshing={refreshing} 
@@ -399,6 +540,7 @@ export default function BusinessDetailScreen() {
           )}
         </View>
       </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -410,11 +552,11 @@ function getDayName(dayNumber: number): string {
 
 const styles = StyleSheet.create({
   safe: { 
-    flex: 1, 
+    flex: 1,
     backgroundColor: Colors.light.background 
   },
-  scrollView: {
-    flex: 1,
+  scrollContent: {
+    paddingBottom: 40,
   },
   header: {
     paddingHorizontal: 16,
@@ -692,4 +834,9 @@ const styles = StyleSheet.create({
     color: '#999',
     marginTop: 12,
   },
+  scrollWrapper: {
+  flexGrow: 1,
+  flexBasis: 0, 
+},
+
 });
