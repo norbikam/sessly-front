@@ -40,9 +40,22 @@ export interface OpeningHours {
   [key: string]: any;
 }
 
+// ✅ ROZSZERZONE TYPY DLA APPOINTMENTS
 export interface Appointment {
   id: number | string;
-  business_id: number | string;
+  business_id?: number | string;
+  business?: string | Business; // Może być nazwa lub obiekt
   service_id?: number | string;
+  service?: Service; // Obiekt usługi
+  user_id?: number | string;
+  date?: string; // format: YYYY-MM-DD
+  start?: string; // ISO datetime lub time
+  end?: string; // ISO datetime lub time
+  start_time?: string; // format: HH:MM
+  end_time?: string; // format: HH:MM
+  status?: 'pending' | 'confirmed' | 'cancelled' | 'completed';
+  notes?: string;
+  created_at?: string;
+  updated_at?: string;
   [key: string]: any;
 }
