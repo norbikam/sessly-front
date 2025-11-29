@@ -34,17 +34,18 @@ export default function HomeScreen() {
     loadBusinesses();
   };
 
-  const handleBusinessPress = (businessId: string | number) => {
+  const handleBusinessPress = (business: Business) => {
+    // ✅ ZMIANA: Użyj slug zamiast id
     router.push({
       pathname: '/business/[id]',
-      params: { id: String(businessId) }, // konwertuj na string dla route param
+      params: { id: business.slug || String(business.id) }, // Preferuj slug, fallback do id
     });
   };
 
   const renderBusiness = ({ item }: { item: Business }) => (
     <TouchableOpacity 
       style={styles.card}
-      onPress={() => handleBusinessPress(item.id)}
+      onPress={() => handleBusinessPress(item)}  // ✅ ZMIANA: Przekaż cały obiekt business
     >
       <View style={styles.cardHeader}>
         <View style={styles.iconContainer}>
@@ -63,7 +64,9 @@ export default function HomeScreen() {
       <View style={styles.footer}>
         <View style={styles.addressContainer}>
           <Ionicons name="location-outline" size={16} color="#666" />
-          <Text style={styles.address}>{item.address ?? 'Brak adresu'}</Text>
+          <Text style={styles.address}>
+            {(item as any).city ?? (item as any).address_line1 ?? item.address ?? 'Brak adresu'}
+          </Text>
         </View>
         <Ionicons name="chevron-forward" size={20} color="#999" />
       </View>
@@ -100,7 +103,7 @@ export default function HomeScreen() {
       <FlatList
         data={businesses}
         renderItem={renderBusiness}
-        keyExtractor={(item) => String(item.id)} // zamiast item.id.toString() — obsługuje string
+        keyExtractor={(item) => String(item.id)}
         contentContainerStyle={styles.list}
         ListEmptyComponent={renderEmpty}
         refreshControl={
