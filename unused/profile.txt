@@ -1,0 +1,206 @@
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { useAuth } from '../contexts/AuthContext';
+import { Button } from '../components/ui/Button';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import { router } from 'expo-router';
+
+export default function ProfileScreen() {
+  const { user, logout } = useAuth();
+  const [showLogoutDialog, setShowLogoutDialog] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleLogoutPress = () => {
+    console.log('🔵 Logout button pressed');
+    setShowLogoutDialog(true);
+  };
+
+  const handleLogoutConfirm = async () => {
+    console.log('🟢 Logout confirmed by user');
+    setIsLoggingOut(true);
+    
+    try {
+      console.log('🟡 Calling logout function...');
+      await logout();
+      console.log('✅ Logout successful, closing dialog');
+      setShowLogoutDialog(false);
+      
+      // Nawigacja do ekranu logowania
+      console.log('🔄 Navigating to login screen...');
+      router.replace('/(auth)/login');
+      console.log('✅ Navigation complete');
+    } catch (error) {
+      console.error('❌ Logout error:', error);
+      setShowLogoutDialog(false);
+      alert('Wystąpił błąd podczas wylogowywania. Spróbuj ponownie.');
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
+
+  const handleLogoutCancel = () => {
+    console.log('🔴 Logout cancelled by user');
+    setShowLogoutDialog(false);
+  };
+
+  if (!user) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.loadingText}>Ładowanie...</Text>
+      </View>
+    );
+  }
+
+  return (
+    <>
+      <ScrollView style={styles.container}>
+        <View style={styles.content}>
+          <View style={styles.header}>
+            <View style={styles.avatarContainer}>
+              <Text style={styles.avatarText}>
+                {user.username.charAt(0).toUpperCase()}
+              </Text>
+            </View>
+            <Text style={styles.username}>{user.username}</Text>
+            <Text style={styles.email}>{user.email}</Text>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Informacje o koncie</Text>
+            
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Nazwa użytkownika</Text>
+              <Text style={styles.infoValue}>{user.username}</Text>
+            </View>
+            
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Email</Text>
+              <Text style={styles.infoValue}>{user.email}</Text>
+            </View>
+            
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Imię</Text>
+              <Text style={styles.infoValue}>{user.first_name || 'Nie podano'}</Text>
+            </View>
+            
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Nazwisko</Text>
+              <Text style={styles.infoValue}>{user.last_name || 'Nie podano'}</Text>
+            </View>
+          </View>
+
+          <View style={styles.buttonContainer}>
+            <Button
+              title="Wyloguj się"
+              onPress={handleLogoutPress}
+              variant="outline"
+              style={styles.logoutButton}
+            />
+          </View>
+        </View>
+      </ScrollView>
+
+      <ConfirmDialog
+        visible={showLogoutDialog}
+        title="Wylogowanie"
+        message="Czy na pewno chcesz się wylogować?"
+        confirmText="Wyloguj"
+        cancelText="Anuluj"
+        onConfirm={handleLogoutConfirm}
+        onCancel={handleLogoutCancel}
+        confirmColor="#ef4444"
+      />
+    </>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f9fafb',
+  },
+  content: {
+    padding: 20,
+  },
+  header: {
+    alignItems: 'center',
+    paddingVertical: 30,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  avatarContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#3b82f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 15,
+  },
+  avatarText: {
+    fontSize: 32,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  username: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#1f2937',
+    marginBottom: 5,
+  },
+  email: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  section: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1f2937',
+    marginBottom: 15,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  infoLabel: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  infoValue: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#1f2937',
+  },
+  buttonContainer: {
+    marginTop: 10,
+  },
+  logoutButton: {
+    borderColor: '#ef4444',
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#6b7280',
+    textAlign: 'center',
+    marginTop: 40,
+  },
+});
