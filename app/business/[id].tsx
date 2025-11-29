@@ -20,13 +20,15 @@ import type { Business, Service, OpeningHours } from '../../types/api';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import Colors from '../../constants/Colors';
+import { getAvailability, createAppointment } from '@/api/appointments';
+import { useAuth } from '../../contexts/AuthContext';
 
 const { width } = Dimensions.get('window');
 
 export default function BusinessDetailScreen() {
   const { id } = useLocalSearchParams(); // To może być slug lub id, więc zostawiamy nazwę
   const router = useRouter();
-
+  const { user, isLoggedIn } = useAuth();
   const [business, setBusiness] = useState<Business | null>(null);
   const [services, setServices] = useState<Service[]>([]);
   const [hours, setHours] = useState<any[]>([]);
@@ -98,13 +100,94 @@ export default function BusinessDetailScreen() {
     setRefreshing(false);
   };
 
-  const handleBook = (service?: Service) => {
-    if (!business) return;
-    Alert.alert(
-      'Rezerwacja',
-      service ? `Rezerwacja: ${service.name}` : `Rezerwacja w ${business.name}`,
-      [{ text: 'OK' }]
-    );
+  const handleBook = async (service: Service) => {
+    if (!isLoggedIn) {
+      Alert.alert(
+        'Wymagane logowanie',
+        'Musisz być zalogowany, aby dokonać rezerwacji.',
+        [
+          { text: 'Anuluj', style: 'cancel' },
+          { 
+            text: 'Zaloguj się', 
+            onPress: () => router.push('/account')
+          },
+        ]
+      );
+      return;
+    }
+
+    if (!business?.slug) {
+      Alert.alert('Błąd', 'Nie można zarezerwować - brak danych biznesu');
+      return;
+    }
+
+    try {
+      // 1. Wybierz datę (tutaj prosty przykład - dzisiejsza data)
+      const today = new Date();
+      const dateStr = today.toISOString().split('T')[0]; // format YYYY-MM-DD
+
+      // 2. Pobierz dostępne godziny
+      const availability = await getAvailability(
+        business.slug,
+        String(service.id),
+        dateStr
+      );
+
+      if (!availability.slots || availability.slots.length === 0) {
+        Alert.alert('Brak dostępności', 'Nie ma wolnych terminów na dzisiaj');
+        return;
+      }
+
+      // 3. Pokaż użytkownikowi dostępne godziny do wyboru
+      const slotOptions = availability.slots.map((slot) => ({
+        text: slot.time,
+        onPress: async () => {
+          try {
+            // 4. Utwórz rezerwację
+            const appointment = await createAppointment(business.slug!, {
+              service_id: String(service.id),
+              date: dateStr,
+              start_time: slot.time,
+              notes: '',
+            });
+
+            Alert.alert(
+              'Sukces!',
+              `Rezerwacja została utworzona na ${slot.time}`,
+              [
+                { text: 'OK', onPress: () => router.push('/account') },
+              ]
+            );
+          } catch (error: any) {
+            console.error('Booking error:', error);
+            Alert.alert(
+              'Błąd rezerwacji',
+              error?.response?.data?.detail ||
+              error?.response?.data?.message ||
+              'Nie udało się utworzyć rezerwacji'
+            );
+          }
+        },
+      }));
+
+      Alert.alert(
+        'Wybierz godzinę',
+        `Dostępne godziny na ${dateStr}:`,
+        [
+          ...slotOptions,
+          { text: 'Anuluj', style: 'cancel' },
+        ]
+      );
+
+    } catch (error: any) {
+      console.error('Availability error:', error);
+      Alert.alert(
+        'Błąd',
+        error?.response?.data?.detail ||
+        error?.response?.data?.message ||
+        'Nie udało się pobrać dostępnych terminów'
+      );
+    }
   };
 
   const openPhone = (phone?: string) => {
@@ -273,59 +356,53 @@ export default function BusinessDetailScreen() {
 
           {/* Services Section */}
           <Text style={styles.sectionTitle}>Usługi</Text>
-          {services.length === 0 ? (
-            <Text style={styles.empty}>Brak zdefiniowanych usług</Text>
-          ) : (
-            services.map((s: Service, idx: number) => {
-              const serviceId = s.id ?? idx;
-              const serviceName = s.name || 'Bez nazwy';
-              const serviceDesc = s.description || '';
-              
-              const duration = (s as any).duration_minutes || s.duration;
-              const price = (s as any).price_amount || s.price;
-              const currency = (s as any).price_currency || 'zł';
-
-              const priceDisplay = price ? `${price} ${currency}` : '—';
-              const durationDisplay = duration ? `${duration} min` : null;
-
-              return (
-                <View key={`service-${serviceId}`} style={styles.serviceRow}>
-                  <View style={styles.serviceMetaLeft}>
-                    <Text style={styles.serviceName}>{serviceName}</Text>
-                    {serviceDesc ? (
-                      <Text style={styles.serviceDesc} numberOfLines={2}>
-                        {serviceDesc}
-                      </Text>
-                    ) : null}
-                    <View style={styles.metaRow}>
-                      {durationDisplay ? (
-                        <View style={styles.pill}>
-                          <Ionicons name="time-outline" size={12} color="#666" />
-                          <Text style={styles.pillText}>{durationDisplay}</Text>
-                        </View>
-                      ) : null}
-                      <View style={[styles.pill, styles.pricePill]}>
-                        <Text style={[styles.pillText, { color: '#fff' }]}>{priceDisplay}</Text>
-                      </View>
-                    </View>
-                  </View>
-
-                  <View style={styles.serviceAction}>
-                    <TouchableOpacity style={styles.bookBtn} onPress={() => handleBook(s)}>
-                      <Text style={styles.bookBtnText}>Rezerwuj</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              );
-            })
+          {services.length > 0 ? (
+  services.map((service, index) => (
+    <View key={index} style={styles.serviceCard}>
+      <View style={styles.serviceHeader}>
+        <Ionicons name="cut-outline" size={24} color="#8B5CF6" />
+        <View style={styles.serviceInfo}>
+          <Text style={styles.serviceName}>{service.name}</Text>
+          {service.description && (
+            <Text style={styles.serviceDescription}>{service.description}</Text>
           )}
         </View>
+      </View>
+      <View style={styles.serviceDetails}>
+        <View style={styles.serviceDetailRow}>
+          <Ionicons name="time-outline" size={16} color="#666" />
+          <Text style={styles.serviceDetailText}>
+            {service.duration_minutes || service.duration || 'N/A'} min
+          </Text>
+        </View>
+        <View style={styles.serviceDetailRow}>
+          <Ionicons name="cash-outline" size={16} color="#666" />
+          <Text style={styles.serviceDetailText}>
+            {service.price_amount || service.price || 'N/A'} {service.price_currency || 'PLN'}
+          </Text>
+        </View>
+      </View>
+      <TouchableOpacity 
+        style={styles.primaryBtn} 
+        onPress={() => handleBook(service)}
+      >
+        <Text style={styles.primaryBtnText}>Zarezerwuj</Text>
+        <Ionicons name="arrow-forward" size={18} color="#fff" />
+      </TouchableOpacity>
+    </View>
+  ))
+) : (
+  <View style={styles.emptyState}>
+    <Ionicons name="briefcase-outline" size={48} color="#ccc" />
+    <Text style={styles.emptyStateText}>Brak zdefiniowanych usług</Text>
+  </View>
+)}     </View>
 
         <View style={{ height: 100 }} />
       </ScrollView>
 
       <View style={styles.footer}>
-        <TouchableOpacity style={styles.primaryBtn} onPress={() => handleBook()}>
+        <TouchableOpacity style={styles.primaryBtn} onPress={() => handleBook(services[0])}>
           <Ionicons name="calendar-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
           <Text style={styles.primaryBtnText}>Umów wizytę</Text>
         </TouchableOpacity>
@@ -489,4 +566,55 @@ const styles = StyleSheet.create({
   backText: { color: '#333', fontWeight: '600', fontSize: 15 },
   emptyText: { marginTop: 16, color: Colors.light.muted, fontSize: 16, marginBottom: 24 },
   infoText: { color: Colors.light.muted, marginBottom: 8, fontStyle: 'italic' },
+    serviceCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#eee',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  serviceHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  serviceInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  serviceDescription: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 20,
+  },
+  serviceDetails: {
+    flexDirection: 'row',
+    marginBottom: 12,
+    gap: 16,
+  },
+  serviceDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  serviceDetailText: {
+    fontSize: 14,
+    color: '#666',
+    marginLeft: 6,
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+  },
+  emptyStateText: {
+    fontSize: 16,
+    color: '#999',
+    marginTop: 12,
+  },
 });

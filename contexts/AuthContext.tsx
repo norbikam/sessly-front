@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { api } from '../api/client';
 
 export type User = {
@@ -17,79 +18,118 @@ export type User = {
 };
 
 type Credentials = { username: string; password: string };
-type RegisterData = Record<string, any>;
+type RegisterData = {
+  username: string;
+  email: string;
+  password: string;
+  password2: string;
+  first_name?: string;
+  last_name?: string;
+};
 
 type AuthContextType = {
   user: User | null;
   isLoggedIn: boolean;
-  login: (payload: Credentials | User) => Promise<void>;
+  login: (credentials: Credentials) => Promise<void>;
   register: (data: RegisterData) => Promise<{ success: boolean; error?: string }>;
-  logout: () => void;
+  logout: () => Promise<void>;
+  isLoading: boolean;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // próbuje kilka możliwych endpointów logowania bez zmiany backendu
-  const login = async (payload: Credentials | User) => {
-    if ('username' in (payload as Credentials) && 'password' in (payload as Credentials)) {
-      const creds = payload as Credentials;
-      const tryBodies = [
-        { username: creds.username, password: creds.password },
-        { email: creds.username, password: creds.password }, // jeśli backend chce email zamiast username
-      ];
-      const candidates = ['/users/login/', '/users/token/', '/auth/login/'];
-      for (const path of candidates) {
-        for (const body of tryBodies) {
-          try {
-            const res = await api.post(path, body);
-            const userData: User = res.data.user ?? res.data;
-            setUser(userData);
-            return;
-          } catch (err: any) {
-            console.log('login fail', { path, body, status: err?.response?.status, data: err?.response?.data });
-            const status = err?.response?.status;
-            if (status === 404 || status === 405) break; // zmień path, spróbuj inny
-            if (status === 401) continue; // spróbuj inny body
-            throw err;
-          }
-        }
+  // Sprawdź czy użytkownik jest zalogowany przy starcie aplikacji
+  useEffect(() => {
+    loadStoredUser();
+  }, []);
+
+  const loadStoredUser = async () => {
+    try {
+      const [storedUser, accessToken] = await AsyncStorage.multiGet(['user', 'access_token']);
+      if (storedUser[1] && accessToken[1]) {
+        setUser(JSON.parse(storedUser[1]));
       }
-      throw new Error('Nie znaleziono endpointu logowania');
+    } catch (error) {
+      console.error('Failed to load stored user:', error);
+    } finally {
+      setIsLoading(false);
     }
-
-    // jeśli przekazano gotowego usera (mock), ustaw go lokalnie
-    setUser(payload as User);
   };
 
-  // próbuje rejestracji na kilka możliwych endpointów (POST /users/ często tworzy usera)
-  const register = async (data: RegisterData) => {
-    const candidates = ['/users/register', '/users/', '/auth/register'];
-    // ensure trailing slashes (safety)
-    const registerCandidates = candidates.map(p => p.endsWith('/') ? p : p + '/');
-    for (const path of registerCandidates) {
-      try {
-        await api.post(path, data);
-        return { success: true };
-      } catch (err: any) {
-        const status = err?.response?.status;
-        if (status === 404 || status === 405) continue;
-        const msg =
-          err?.response?.data?.detail ||
-          err?.response?.data?.message ||
-          err?.message ||
-          'Błąd rejestracji';
-        return { success: false, error: msg };
-      }
-    }
+  const login = async (credentials: Credentials) => {
+    try {
+      // Wywołaj endpoint logowania
+      const response = await api.post('/users/login/', {
+        username: credentials.username,
+        password: credentials.password,
+      });
 
-    return { success: false, error: 'Nie znaleziono endpointu rejestracji na backendzie' };
+      const { user: userData, access, refresh } = response.data;
+
+      // Zapisz tokeny i dane użytkownika
+      await AsyncStorage.multiSet([
+        ['access_token', access],
+        ['refresh_token', refresh],
+        ['user', JSON.stringify(userData)],
+      ]);
+
+      setUser(userData);
+    } catch (error: any) {
+      console.error('Login error:', error?.response?.data || error.message);
+      throw new Error(
+        error?.response?.data?.detail || 
+        error?.response?.data?.message || 
+        'Błąd logowania'
+      );
+    }
   };
 
-  const logout = () => {
-    setUser(null);
+  const register = async (data: RegisterData): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const response = await api.post('/users/register/', data);
+
+      const { user: userData, access, refresh } = response.data;
+
+      // Zapisz tokeny i dane użytkownika
+      await AsyncStorage.multiSet([
+        ['access_token', access],
+        ['refresh_token', refresh],
+        ['user', JSON.stringify(userData)],
+      ]);
+
+      setUser(userData);
+      return { success: true };
+    } catch (error: any) {
+      console.error('Register error:', error?.response?.data || error.message);
+      
+      const errorMsg = 
+        error?.response?.data?.detail ||
+        error?.response?.data?.message ||
+        error?.message ||
+        'Błąd rejestracji';
+        
+      return { success: false, error: errorMsg };
+    }
+  };
+
+  const logout = async () => {
+    try {
+      const refreshToken = await AsyncStorage.getItem('refresh_token');
+      if (refreshToken) {
+        // Próbuj wylogować na backendzie (blacklist token)
+        await api.post('/users/logout/', { refresh: refreshToken }).catch(() => {
+          // Ignoruj błędy - i tak usuwamy lokalne dane
+        });
+      }
+    } finally {
+      // Wyczyść dane lokalne
+      await AsyncStorage.multiRemove(['access_token', 'refresh_token', 'user']);
+      setUser(null);
+    }
   };
 
   const value: AuthContextType = {
@@ -98,6 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     login,
     register,
     logout,
+    isLoading,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
