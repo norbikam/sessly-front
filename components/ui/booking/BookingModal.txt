@@ -1,0 +1,7 @@
+interface BookingModalProps {
+  visible: boolean;
+  onClose: () => void;
+  business: Business;
+  service: Service;
+  onSuccess: (appointment: Appointment) => void;
+}
