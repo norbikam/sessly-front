@@ -1,42 +1,70 @@
-import { api as apiClient } from './client';
-import { Business, Appointment, Service } from '../types/api';
+import { api } from './client';
+import { Business } from '../types/api';
 
-export const getBusinesses = async (params?: {
-  category?: string;
-  search?: string;
-}): Promise<Business[]> => {
-  const response = await apiClient.get<Business[]>('/businesses/', { params });
+// ✅ ISTNIEJĄCE FUNKCJE
+export const getBusinesses = async (): Promise<Business[]> => {
+  const response = await api.get('/businesses/');
   return response.data;
 };
 
-// NOWA FUNKCJA - pobiera szczegóły biznesu ze wszystkimi danymi
+/**
+ * NEW FUNCTION - Pobierz szczegóły biznesu (wszystkie dane: services, opening_hours)
+ */
 export const getBusinessDetail = async (slug: string): Promise<Business> => {
-  const response = await apiClient.get<Business>(`/businesses/${slug}/`);
+  const response = await api.get(`/businesses/${slug}/`);
   return response.data;
 };
 
-export const getBusinessBySlug = async (idOrSlug: string): Promise<Business> => {
-  const response = await apiClient.get<Business>(`/businesses/${idOrSlug}/`);
+export const getBusinessBySlug = async (slug: string): Promise<Business> => {
+  const response = await api.get(`/businesses/${slug}/`);
   return response.data;
 };
 
-export const getBusinessById = async (id: string | number): Promise<Business> => {
-  const response = await apiClient.get<Business>(`/businesses/${id}/`);
+export const getBusinessById = async (id: string): Promise<Business> => {
+  const response = await api.get(`/businesses/${id}/`);
   return response.data;
 };
 
-export const getBusinessCategories = async (): Promise<string[]> => {
-  const response = await apiClient.get<{ categories: string[] }>('/businesses/categories/');
-  return response.data.categories;
+// ⚠️ TE FUNKCJE NIE SĄ JUŻ POTRZEBNE - dane dostępne w głównym endpoincie
+// export const getBusinessServices = ...
+// export const getBusinessOpeningHours = ...
+
+// ✅ NOWE FUNKCJE - Category Filter & Search
+
+export interface BusinessCategory {
+  slug: string;
+  name: string;
+  count: number;
+}
+
+/**
+ * Pobierz listę kategorii z licznikami biznesów
+ * Endpoint: GET /api/businesses/categories/
+ */
+export const getBusinessCategories = async (): Promise<BusinessCategory[]> => {
+  const response = await api.get<BusinessCategory[]>('/businesses/categories/');
+  return response.data;
 };
 
-// Te funkcje są już niepotrzebne - dane są w głównym endpoincie
-export const getBusinessServices = async (businessId: string | number): Promise<Service[]> => {
-  // Pozostaw dla kompatybilności, ale nie będzie używane
-  return [];
-};
-
-export const getBusinessOpeningHours = async (businessId: string | number): Promise<any | null> => {
-  // Pozostaw dla kompatybilności, ale nie będzie używane
-  return null;
+/**
+ * Wyszukaj biznesy z filtrami
+ * @param search - szukaj po nazwie lub mieście
+ * @param category - filtruj po kategorii (slug)
+ */
+export const searchBusinesses = async (
+  search?: string,
+  category?: string
+): Promise<Business[]> => {
+  const params: Record<string, string> = {};
+  
+  if (search && search.trim()) {
+    params.search = search.trim();
+  }
+  
+  if (category && category !== 'all') {
+    params.category = category;
+  }
+  
+  const response = await api.get<Business[]>('/businesses/', { params });
+  return response.data;
 };
