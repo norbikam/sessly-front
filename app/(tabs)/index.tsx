@@ -9,7 +9,8 @@ import {
   ActivityIndicator,
   Platform,
   Pressable,
-  Animated
+  Animated,
+  Modal
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
@@ -24,6 +25,18 @@ import { Ionicons } from '@expo/vector-icons';
 import Colors from '../../constants/Colors';
 import SearchBar from '../../components/search/SearchBar';
 import CategoryFilter from '../../components/categories/CategoryFilter';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const SORT_KEY = '@sessly_sort_preference';
+
+// Sort options
+type SortOption = 'name-asc' | 'name-desc' | 'newest';
+
+const SORT_OPTIONS = [
+  { value: 'name-asc', label: 'Nazwa A-Z', icon: 'text-outline' },
+  { value: 'name-desc', label: 'Nazwa Z-A', icon: 'text-outline' },
+  { value: 'newest', label: 'Najnowsze', icon: 'time-outline' },
+];
 
 // Debounce hook
 function useDebounce<T>(value: T, delay: number): T {
@@ -81,6 +94,70 @@ function AnimatedHeart({ isFavorite, onPress }: { isFavorite: boolean; onPress: 
   );
 }
 
+// 🎯 Sort Modal Component
+function SortModal({ 
+  visible, 
+  currentSort, 
+  onClose, 
+  onSelectSort 
+}: { 
+  visible: boolean; 
+  currentSort: SortOption; 
+  onClose: () => void; 
+  onSelectSort: (sort: SortOption) => void;
+}) {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Sortuj według</Text>
+            <TouchableOpacity onPress={onClose}>
+              <Ionicons name="close" size={24} color="#666" />
+            </TouchableOpacity>
+          </View>
+
+          {SORT_OPTIONS.map((option) => (
+            <TouchableOpacity
+              key={option.value}
+              style={[
+                styles.sortOption,
+                currentSort === option.value && styles.sortOptionActive,
+              ]}
+              onPress={() => {
+                onSelectSort(option.value as SortOption);
+                onClose();
+              }}
+            >
+              <Ionicons 
+                name={option.icon as any} 
+                size={22} 
+                color={currentSort === option.value ? Colors.accent : '#666'} 
+              />
+              <Text 
+                style={[
+                  styles.sortOptionText,
+                  currentSort === option.value && styles.sortOptionTextActive,
+                ]}
+              >
+                {option.label}
+              </Text>
+              {currentSort === option.value && (
+                <Ionicons name="checkmark" size={22} color={Colors.accent} />
+              )}
+            </TouchableOpacity>
+          ))}
+        </View>
+      </Pressable>
+    </Modal>
+  );
+}
+
 export default function HomeScreen() {
   const router = useRouter();
   const { user } = useAuth();
@@ -96,9 +173,37 @@ export default function HomeScreen() {
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [sortBy, setSortBy] = useState<SortOption>('name-asc');
+  const [showSortModal, setShowSortModal] = useState(false);
   
   // Debounced search query (wait 500ms after user stops typing)
   const debouncedSearch = useDebounce(searchQuery, 500);
+
+  // Load sort preference from AsyncStorage
+  useEffect(() => {
+    loadSortPreference();
+  }, []);
+
+  const loadSortPreference = async () => {
+    try {
+      const saved = await AsyncStorage.getItem(SORT_KEY);
+      if (saved) {
+        setSortBy(saved as SortOption);
+        console.log('✅ [HomeScreen] Loaded sort preference:', saved);
+      }
+    } catch (error) {
+      console.error('❌ [HomeScreen] Failed to load sort preference:', error);
+    }
+  };
+
+  const saveSortPreference = async (sort: SortOption) => {
+    try {
+      await AsyncStorage.setItem(SORT_KEY, sort);
+      console.log('✅ [HomeScreen] Saved sort preference:', sort);
+    } catch (error) {
+      console.error('❌ [HomeScreen] Failed to save sort preference:', error);
+    }
+  };
 
   // Load categories
   const loadCategories = async () => {
@@ -173,6 +278,11 @@ export default function HomeScreen() {
     toggleFavorite(businessId);
   };
 
+  const handleSortSelect = (sort: SortOption) => {
+    setSortBy(sort);
+    saveSortPreference(sort);
+  };
+
   // ✅ useCallback - stabilne handlery
   const handleCategorySelect = useCallback((categorySlug: string) => {
     console.log('🔵 [HomeScreen] Category selected:', categorySlug);
@@ -191,6 +301,26 @@ export default function HomeScreen() {
     setSearchQuery('');
     setSelectedCategory('all');
   }, []);
+
+  // ✅ Sort businesses based on selected option
+  const sortedBusinesses = useMemo(() => {
+    const sorted = [...businesses];
+    
+    switch (sortBy) {
+      case 'name-asc':
+        sorted.sort((a, b) => a.name.localeCompare(b.name));
+        break;
+      case 'name-desc':
+        sorted.sort((a, b) => b.name.localeCompare(a.name));
+        break;
+      case 'newest':
+        // Assume businesses have an ID that increases with time
+        sorted.sort((a, b) => Number(b.id) - Number(a.id));
+        break;
+    }
+    
+    return sorted;
+  }, [businesses, sortBy]);
 
   // ✅ Enhanced business card with favorite button
   const renderBusiness = useCallback(({ item }: { item: Business }) => {
@@ -278,6 +408,9 @@ export default function HomeScreen() {
     );
   }, [searching, searchQuery, selectedCategory, handleClearAllFilters]);
 
+  // Get current sort label
+  const currentSortLabel = SORT_OPTIONS.find(opt => opt.value === sortBy)?.label || 'Sortuj';
+
   // ✅ Memoized header
   const renderHeader = useMemo(() => (
     <>
@@ -298,17 +431,30 @@ export default function HomeScreen() {
         loading={searching}
       />
 
-      {/* Results Count */}
+      {/* Results Count + Sort Button */}
       {!loading && (
         <View style={styles.resultsHeader}>
           <Text style={styles.resultsCount}>
-            {businesses.length} {businesses.length === 1 ? 'wynik' : 'wyników'}
+            {sortedBusinesses.length} {sortedBusinesses.length === 1 ? 'wynik' : 'wyników'}
           </Text>
-          {(searchQuery || selectedCategory !== 'all') && (
-            <TouchableOpacity onPress={handleClearAllFilters}>
-              <Text style={styles.clearAllText}>Wyczyść wszystko</Text>
+          
+          <View style={styles.headerActions}>
+            {/* Sort Button */}
+            <TouchableOpacity 
+              style={styles.sortButton}
+              onPress={() => setShowSortModal(true)}
+            >
+              <Ionicons name="funnel-outline" size={16} color={Colors.accent} />
+              <Text style={styles.sortButtonText}>{currentSortLabel}</Text>
             </TouchableOpacity>
-          )}
+
+            {/* Clear All */}
+            {(searchQuery || selectedCategory !== 'all') && (
+              <TouchableOpacity onPress={handleClearAllFilters}>
+                <Text style={styles.clearAllText}>Wyczyść</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       )}
     </>
@@ -318,7 +464,8 @@ export default function HomeScreen() {
     categories,
     searching,
     loading,
-    businesses.length,
+    sortedBusinesses.length,
+    currentSortLabel,
     handleSearchChange,
     handleSearchClear,
     handleCategorySelect,
@@ -347,7 +494,7 @@ export default function HomeScreen() {
       </View>
 
       <FlatList
-        data={businesses}
+        data={sortedBusinesses}
         renderItem={renderBusiness}
         keyExtractor={(item) => String(item.id)}
         contentContainerStyle={styles.list}
@@ -366,6 +513,14 @@ export default function HomeScreen() {
         maxToRenderPerBatch={10}
         updateCellsBatchingPeriod={50}
         windowSize={21}
+      />
+
+      {/* Sort Modal */}
+      <SortModal
+        visible={showSortModal}
+        currentSort={sortBy}
+        onClose={() => setShowSortModal(false)}
+        onSelectSort={handleSortSelect}
       />
     </View>
   );
@@ -416,6 +571,25 @@ const styles = StyleSheet.create({
   resultsCount: {
     fontSize: 14,
     color: '#666',
+    fontWeight: '600',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  sortButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF5F0',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 4,
+  },
+  sortButtonText: {
+    fontSize: 13,
+    color: Colors.accent,
     fontWeight: '600',
   },
   clearAllText: {
@@ -549,5 +723,53 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#333',
+  },
+  sortOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 8,
+    backgroundColor: '#f8f8f8',
+    gap: 12,
+  },
+  sortOptionActive: {
+    backgroundColor: '#FFF5F0',
+    borderWidth: 2,
+    borderColor: Colors.accent,
+  },
+  sortOptionText: {
+    flex: 1,
+    fontSize: 16,
+    color: '#333',
+    fontWeight: '500',
+  },
+  sortOptionTextActive: {
+    color: Colors.accent,
+    fontWeight: '700',
   },
 });

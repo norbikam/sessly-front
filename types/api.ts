@@ -14,7 +14,7 @@ export interface User {
 }
 
 export interface Business {
-  id: string | number; // UUID lub numeric
+  id: string | number;
   name: string;
   description?: string;
   address?: string;
