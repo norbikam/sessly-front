@@ -4,17 +4,13 @@ import { api } from '../api/client';
 
 export type User = {
   id: number | string;
-  name?: string;
   email: string;
-  phone?: string;
-  avatar?: string;
-  joinDate?: string;
-  totalVisits?: number;
-  favoriteSpecialists?: number;
-  points?: number;
+  username?: string;
   first_name?: string;
   last_name?: string;
-  username?: string;
+  is_specialist: boolean; // ✅ DODANE
+  avatar?: string;
+  phone?: string;
 };
 
 type Credentials = { username: string; password: string };
@@ -22,7 +18,7 @@ type RegisterData = {
   username: string;
   email: string;
   password: string;
-  password2: string;
+  is_specialist: boolean; // ✅ DODANE
   first_name?: string;
   last_name?: string;
 };
@@ -33,7 +29,7 @@ type AuthContextType = {
   login: (credentials: Credentials) => Promise<void>;
   register: (data: RegisterData) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
-  updateUser: (userData: Partial<User>) => Promise<void>; // ✅ NEW
+  updateUser: (userData: Partial<User>) => Promise<void>;
   isLoading: boolean;
 };
 
@@ -43,7 +39,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Sprawdź czy użytkownik jest zalogowany przy starcie aplikacji
   useEffect(() => {
     loadStoredUser();
   }, []);
@@ -63,15 +58,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (credentials: Credentials) => {
     try {
-      // Wywołaj endpoint logowania
-      const response = await api.post('/users/login/', {
-        username: credentials.username,
-        password: credentials.password,
-      });
-
+      const response = await api.post('/users/login/', credentials);
       const { user: userData, access, refresh } = response.data;
 
-      // Zapisz tokeny i dane użytkownika
       await AsyncStorage.multiSet([
         ['access_token', access],
         ['refresh_token', refresh],
@@ -80,22 +69,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setUser(userData);
     } catch (error: any) {
-      console.error('Login error:', error?.response?.data || error.message);
-      throw new Error(
-        error?.response?.data?.detail || 
-        error?.response?.data?.message || 
-        'Błąd logowania'
-      );
+      throw new Error(error?.response?.data?.detail || 'Błąd logowania');
     }
   };
 
   const register = async (data: RegisterData): Promise<{ success: boolean; error?: string }> => {
     try {
       const response = await api.post('/users/register/', data);
-
       const { user: userData, access, refresh } = response.data;
 
-      // Zapisz tokeny i dane użytkownika
       await AsyncStorage.multiSet([
         ['access_token', access],
         ['refresh_token', refresh],
@@ -105,15 +87,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(userData);
       return { success: true };
     } catch (error: any) {
-      console.error('Register error:', error?.response?.data || error.message);
-      
-      const errorMsg = 
-        error?.response?.data?.detail ||
-        error?.response?.data?.message ||
-        error?.message ||
-        'Błąd rejestracji';
-        
-      return { success: false, error: errorMsg };
+      const errorMsg = error?.response?.data?.detail || Object.values(error?.response?.data || {})[0] || 'Błąd rejestracji';
+      return { success: false, error: String(errorMsg) };
     }
   };
 
@@ -121,54 +96,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const refreshToken = await AsyncStorage.getItem('refresh_token');
       if (refreshToken) {
-        // Próbuj wylogować na backendzie (blacklist token)
-        await api.post('/users/logout/', { refresh: refreshToken }).catch(() => {
-          // Ignoruj błędy - i tak usuwamy lokalne dane
-        });
+        await api.post('/users/logout/', { refresh: refreshToken }).catch(() => {});
       }
     } finally {
-      // Wyczyść dane lokalne
       await AsyncStorage.multiRemove(['access_token', 'refresh_token', 'user']);
       setUser(null);
     }
   };
 
-  // ✅ NEW: Update user data
   const updateUser = async (userData: Partial<User>) => {
-    try {
-      if (!user) throw new Error('No user logged in');
-
-      // Merge new data with existing user
-      const updatedUser = { ...user, ...userData };
-
-      // Save to AsyncStorage
-      await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
-
-      // Update state
-      setUser(updatedUser);
-
-      console.log('✅ [AuthContext] User updated:', updatedUser);
-    } catch (error) {
-      console.error('❌ [AuthContext] Update user error:', error);
-      throw error;
-    }
+    if (!user) return;
+    const updatedUser = { ...user, ...userData };
+    await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
+    setUser(updatedUser);
   };
 
-  const value: AuthContextType = {
-    user,
-    isLoggedIn: !!user,
-    login,
-    register,
-    logout,
-    updateUser, // ✅ NEW
-    isLoading,
-  };
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={{ user, isLoggedIn: !!user, login, register, logout, updateUser, isLoading }}>
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
-export function useAuth(): AuthContextType {
+export const useAuth = () => {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error('useAuth must be used within AuthProvider');
   return ctx;
-}
+};

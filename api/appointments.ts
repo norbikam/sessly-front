@@ -84,3 +84,8 @@ export const cancelAppointment = async (appointmentId: string): Promise<void> =>
     throw error;
   }
 };
+
+export const getSpecialistSchedule = async (): Promise<Appointment[]> => {
+  const response = await api.get('/appointments/specialist/');
+  return response.data;
+};
