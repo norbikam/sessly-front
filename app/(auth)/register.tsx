@@ -1,216 +1,546 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch } from 'react-native';
-import { router } from 'expo-router';
-import { useAuth } from '../../contexts/AuthContext';
-import { Button } from '../../components/ui/Button';
-import { Input } from '../../components/ui/Input';
-import { SuccessDialog } from '../../components/ui/SuccessDialog';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  StyleSheet,
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import { registerAsCustomer, registerAsBusinessOwner, RegisterBusinessData } from '../../api/auth';
+import { RegisterRequest } from '../../types/api';
 
-interface FormData {
-  username: string;
-  email: string;
-  password: string;
-  password2: string;
-  first_name: string;
-  last_name: string;
-  is_specialist: boolean;
-}
+type AccountType = 'customer' | 'business';
 
-interface FormErrors {
-  [key: string]: string;
-}
+const CATEGORIES = [
+  { value: 'hairdresser', label: 'Fryzjer', icon: 'cut' },
+  { value: 'doctor', label: 'Lekarz', icon: 'medical' },
+  { value: 'beauty', label: 'Kosmetyka', icon: 'sparkles' },
+  { value: 'spa', label: 'SPA', icon: 'water' },
+  { value: 'fitness', label: 'Fitness', icon: 'fitness' },
+  { value: 'other', label: 'Inne', icon: 'ellipsis-horizontal' },
+] as const;
 
 export default function RegisterScreen() {
-  const { register } = useAuth();
+  const router = useRouter();
   
-  const [formData, setFormData] = useState<FormData>({
-    username: '',
-    email: '',
-    password: '',
-    password2: '',
-    first_name: '',
-    last_name: '',
-    is_specialist: false,
-  });
+  // Typ konta
+  const [accountType, setAccountType] = useState<AccountType>('customer');
   
-  const [errors, setErrors] = useState<FormErrors>({});
-  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
-  const [showErrorDialog, setShowErrorDialog] = useState(false);
-  const [dialogMessage, setDialogMessage] = useState('');
+  // Dane użytkownika
+  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [password2, setPassword2] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  
+  // Dane biznesu
+  const [businessName, setBusinessName] = useState('');
+  const [businessCategory, setBusinessCategory] = useState<string>('hairdresser');
+  const [businessPhone, setBusinessPhone] = useState('');
+  const [businessAddress, setBusinessAddress] = useState('');
+  const [businessCity, setBusinessCity] = useState('');
+  const [businessPostalCode, setBusinessPostalCode] = useState('');
+  const [businessDescription, setBusinessDescription] = useState('');
+  const [businessNip, setBusinessNip] = useState('');
+  
+  // UI state
+  const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState('');
+
+  const validateForm = () => {
+    if (!username.trim()) {
+      setError('Nazwa użytkownika jest wymagana');
+      return false;
+    }
+    if (!email.trim() || !email.includes('@')) {
+      setError('Podaj prawidłowy adres email');
+      return false;
+    }
+    if (password.length < 8) {
+      setError('Hasło musi mieć minimum 8 znaków');
+      return false;
+    }
+    if (password !== password2) {
+      setError('Hasła nie są identyczne');
+      return false;
+    }
+    
+    if (accountType === 'business') {
+      if (!businessName.trim()) {
+        setError('Nazwa firmy jest wymagana');
+        return false;
+      }
+      if (!businessPhone.trim()) {
+        setError('Numer telefonu firmy jest wymagany');
+        return false;
+      }
+      if (!businessAddress.trim()) {
+        setError('Adres firmy jest wymagany');
+        return false;
+      }
+      if (!businessCity.trim()) {
+        setError('Miasto jest wymagane');
+        return false;
+      }
+      if (!businessPostalCode.trim()) {
+        setError('Kod pocztowy jest wymagany');
+        return false;
+      }
+    }
+    
+    return true;
+  };
 
   const handleRegister = async () => {
-    setErrors({});
-    const newErrors: FormErrors = {};
+    setError('');
     
-    if (!formData.username.trim()) newErrors.username = 'Nazwa użytkownika jest wymagana';
-    if (!formData.email.trim()) newErrors.email = 'Email jest wymagany';
-    if (formData.password.length < 8) newErrors.password = 'Hasło musi mieć co najmniej 8 znaków';
-    if (formData.password !== formData.password2) newErrors.password2 = 'Hasła nie są identyczne';
-    
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
+    if (!validateForm()) {
       return;
     }
     
+    setLoading(true);
+    
     try {
-      const result = await register(formData);
-      if (result.success) {
-        setDialogMessage('Twoje konto zostało pomyślnie utworzone!');
-        setShowSuccessDialog(true);
+      if (accountType === 'customer') {
+        const data: RegisterRequest = {
+          username: username.trim(),
+          email: email.trim(),
+          password,
+          password2,
+          first_name: firstName.trim() || undefined,
+          last_name: lastName.trim() || undefined,
+        };
+        
+        await registerAsCustomer(data);
+        Alert.alert('Sukces', 'Konto zostało utworzone!', [
+          { text: 'OK', onPress: () => router.replace('/(auth)/login') }
+        ]);
+        
       } else {
-        setDialogMessage(result.error || 'Błąd rejestracji.');
-        setShowErrorDialog(true);
+        const data: RegisterBusinessData = {
+          username: username.trim(),
+          email: email.trim(),
+          password,
+          password2,
+          first_name: firstName.trim() || undefined,
+          last_name: lastName.trim() || undefined,
+          business_name: businessName.trim(),
+          business_category: businessCategory as any,
+          business_phone: businessPhone.trim(),
+          business_address_line1: businessAddress.trim(),
+          business_city: businessCity.trim(),
+          business_postal_code: businessPostalCode.trim(),
+          business_description: businessDescription.trim() || undefined,
+          business_nip: businessNip.trim() || undefined,
+        };
+        
+        const result = await registerAsBusinessOwner(data);
+        Alert.alert(
+          'Sukces!', 
+          `Firma "${result.business.name}" została utworzona!`,
+          [{ text: 'OK', onPress: () => router.replace('/(auth)/login') }]
+        );
       }
-    } catch (error: any) {
-      setDialogMessage(error.message || 'Wystąpił nieoczekiwany błąd.');
-      setShowErrorDialog(true);
+      
+    } catch (err: any) {
+      console.error('Registration error:', err);
+      setError(err.message || 'Wystąpił błąd podczas rejestracji');
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <>
-      <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 40 }}>
-        <View style={styles.content}>
-          <Text style={styles.title}>Utwórz konto</Text>
-          <Text style={styles.subtitle}>Wypełnij formularz aby dołączyć do Sessly</Text>
-
-          <View style={styles.form}>
-            {/* WYBÓR ROLI */}
-            <TouchableOpacity 
-              style={[styles.roleSelector, formData.is_specialist && styles.roleSelectorActive]}
-              onPress={() => setFormData({ ...formData, is_specialist: !formData.is_specialist })}
+    <KeyboardAvoidingView 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1 }}
+    >
+      <ScrollView 
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Text style={styles.title}>Utwórz konto</Text>
+        
+        {/* Toggle typ konta */}
+        <View style={styles.accountTypeContainer}>
+          <TouchableOpacity
+            style={[
+              styles.accountTypeButton,
+              accountType === 'customer' && styles.accountTypeButtonActive
+            ]}
+            onPress={() => setAccountType('customer')}
+          >
+            <Ionicons 
+              name="person" 
+              size={20} 
+              color={accountType === 'customer' ? '#FFF' : '#8B7AB8'} 
+            />
+            <Text 
+              style={[
+                styles.accountTypeText,
+                accountType === 'customer' && styles.accountTypeTextActive
+              ]}
             >
-              <View style={styles.roleIcon}>
-                <Ionicons 
-                  name={formData.is_specialist ? "briefcase" : "person-outline"} 
-                  size={24} 
-                  color={formData.is_specialist ? "#3b82f6" : "#6b7280"} 
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.roleTitle}>Konto Specjalisty</Text>
-                <Text style={styles.roleSubtitle}>Chcę oferować swoje usługi</Text>
-              </View>
-              <Switch
-                value={formData.is_specialist}
-                onValueChange={(val) => setFormData({ ...formData, is_specialist: val })}
-                trackColor={{ false: "#d1d5db", true: "#bfdbfe" }}
-                thumbColor={formData.is_specialist ? "#3b82f6" : "#f4f3f4"}
+              Klient
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[
+              styles.accountTypeButton,
+              accountType === 'business' && styles.accountTypeButtonActive
+            ]}
+            onPress={() => setAccountType('business')}
+          >
+            <Ionicons 
+              name="business" 
+              size={20} 
+              color={accountType === 'business' ? '#FFF' : '#8B7AB8'} 
+            />
+            <Text 
+              style={[
+                styles.accountTypeText,
+                accountType === 'business' && styles.accountTypeTextActive
+              ]}
+            >
+              Firma
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Błąd */}
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+
+        {/* Dane użytkownika */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Dane logowania</Text>
+          
+          <TextInput
+            style={styles.input}
+            placeholder="Nazwa użytkownika"
+            value={username}
+            onChangeText={setUsername}
+            autoCapitalize="none"
+          />
+          
+          <TextInput
+            style={styles.input}
+            placeholder="Email"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
+          
+          <View style={styles.passwordContainer}>
+            <TextInput
+              style={styles.passwordInput}
+              placeholder="Hasło"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+            />
+            <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+              <Ionicons 
+                name={showPassword ? 'eye-off' : 'eye'} 
+                size={20} 
+                color="#999" 
               />
             </TouchableOpacity>
+          </View>
+          
+          <TextInput
+            style={styles.input}
+            placeholder="Potwierdź hasło"
+            value={password2}
+            onChangeText={setPassword2}
+            secureTextEntry={!showPassword}
+          />
+          
+          <TextInput
+            style={styles.input}
+            placeholder="Imię (opcjonalne)"
+            value={firstName}
+            onChangeText={setFirstName}
+          />
+          
+          <TextInput
+            style={styles.input}
+            placeholder="Nazwisko (opcjonalne)"
+            value={lastName}
+            onChangeText={setLastName}
+          />
+        </View>
 
-            <Input
-              label="Nazwa użytkownika *"
-              value={formData.username}
-              onChangeText={(text) => setFormData({ ...formData, username: text })}
-              error={errors.username}
-              autoCapitalize="none"
+        {/* Dane biznesu (tylko jeśli business) */}
+        {accountType === 'business' && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Dane firmy</Text>
+            
+            <TextInput
+              style={styles.input}
+              placeholder="Nazwa firmy *"
+              value={businessName}
+              onChangeText={setBusinessName}
             />
-            <Input
-              label="Email *"
-              value={formData.email}
-              onChangeText={(text) => setFormData({ ...formData, email: text })}
-              error={errors.email}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-            <Input
-              label="Hasło *"
-              value={formData.password}
-              onChangeText={(text) => setFormData({ ...formData, password: text })}
-              error={errors.password}
-              secureTextEntry
-            />
-            <Input
-              label="Powtórz hasło *"
-              value={formData.password2}
-              onChangeText={(text) => setFormData({ ...formData, password2: text })}
-              error={errors.password2}
-              secureTextEntry
-            />
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <View style={{ flex: 1 }}>
-                <Input
-                  label="Imię"
-                  value={formData.first_name}
-                  onChangeText={(text) => setFormData({ ...formData, first_name: text })}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Input
-                  label="Nazwisko"
-                  value={formData.last_name}
-                  onChangeText={(text) => setFormData({ ...formData, last_name: text })}
-                />
-              </View>
+            
+            <Text style={styles.label}>Kategoria *</Text>
+            <View style={styles.categoryGrid}>
+              {CATEGORIES.map((cat) => (
+                <TouchableOpacity
+                  key={cat.value}
+                  style={[
+                    styles.categoryButton,
+                    businessCategory === cat.value && styles.categoryButtonActive
+                  ]}
+                  onPress={() => setBusinessCategory(cat.value)}
+                >
+                  <Ionicons 
+                    name={cat.icon as any} 
+                    size={24} 
+                    color={businessCategory === cat.value ? '#FFF' : '#8B7AB8'} 
+                  />
+                  <Text 
+                    style={[
+                      styles.categoryLabel,
+                      businessCategory === cat.value && styles.categoryLabelActive
+                    ]}
+                  >
+                    {cat.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
             
-            <Button title="Zarejestruj się" onPress={handleRegister} style={styles.registerButton} />
+            <TextInput
+              style={styles.input}
+              placeholder="Telefon *"
+              value={businessPhone}
+              onChangeText={setBusinessPhone}
+              keyboardType="phone-pad"
+            />
             
-            <TouchableOpacity style={styles.loginLink} onPress={() => router.push('/(auth)/login')}>
-              <Text style={styles.loginLinkText}>
-                Masz już konto? <Text style={styles.loginLinkTextBold}>Zaloguj się</Text>
-              </Text>
-            </TouchableOpacity>
+            <TextInput
+              style={styles.input}
+              placeholder="Adres *"
+              value={businessAddress}
+              onChangeText={setBusinessAddress}
+            />
+            
+            <TextInput
+              style={styles.input}
+              placeholder="Miasto *"
+              value={businessCity}
+              onChangeText={setBusinessCity}
+            />
+            
+            <TextInput
+              style={styles.input}
+              placeholder="Kod pocztowy *"
+              value={businessPostalCode}
+              onChangeText={setBusinessPostalCode}
+            />
+            
+            <TextInput
+              style={[styles.input, styles.textArea]}
+              placeholder="Opis firmy (opcjonalnie)"
+              value={businessDescription}
+              onChangeText={setBusinessDescription}
+              multiline
+              numberOfLines={4}
+            />
+            
+            <TextInput
+              style={styles.input}
+              placeholder="NIP (opcjonalnie)"
+              value={businessNip}
+              onChangeText={setBusinessNip}
+              keyboardType="numeric"
+            />
           </View>
-        </View>
+        )}
+
+        {/* Przycisk rejestracji */}
+        <TouchableOpacity 
+          style={styles.registerButton} 
+          onPress={handleRegister}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#FFF" />
+          ) : (
+            <Text style={styles.registerButtonText}>
+              {accountType === 'customer' ? 'Zarejestruj się' : 'Zarejestruj firmę'}
+            </Text>
+          )}
+        </TouchableOpacity>
+
+        {/* Link do logowania */}
+        <TouchableOpacity onPress={() => router.push('/(auth)/login')}>
+          <Text style={styles.loginLink}>
+            Masz już konto? <Text style={styles.loginLinkBold}>Zaloguj się</Text>
+          </Text>
+        </TouchableOpacity>
       </ScrollView>
-
-      <SuccessDialog
-        visible={showSuccessDialog}
-        type="success"
-        title="Sukces!"
-        message={dialogMessage}
-        buttonText="Zaloguj się"
-        onPress={() => { setShowSuccessDialog(false); router.replace('/(auth)/login'); }}
-      />
-
-      <SuccessDialog
-        visible={showErrorDialog}
-        type="error"
-        title="Błąd"
-        message={dialogMessage}
-        buttonText="Zamknij"
-        onPress={() => setShowErrorDialog(false)}
-      />
-    </>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f9fafb' },
-  content: { padding: 20 },
-  title: { fontSize: 28, fontWeight: '700', color: '#1f2937', marginBottom: 8 },
-  subtitle: { fontSize: 14, color: '#6b7280', marginBottom: 24 },
-  form: { gap: 12 },
-  registerButton: { marginTop: 16 },
-  loginLink: { alignItems: 'center', marginTop: 16 },
-  loginLinkText: { fontSize: 14, color: '#6b7280' },
-  loginLinkTextBold: { fontWeight: '600', color: '#3b82f6' },
-  roleSelector: {
+  container: {
+    flex: 1,
+    backgroundColor: '#FAF8FF',
+  },
+  content: {
+    padding: 20,
+    paddingTop: 60,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#2D2438',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  accountTypeContainer: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 20,
+  },
+  accountTypeButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    justifyContent: 'center',
+    gap: 8,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#8B7AB8',
+    backgroundColor: '#FFF',
+  },
+  accountTypeButtonActive: {
+    backgroundColor: '#8B7AB8',
+    borderColor: '#8B7AB8',
+  },
+  accountTypeText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#8B7AB8',
+  },
+  accountTypeTextActive: {
+    color: '#FFF',
+  },
+  error: {
+    backgroundColor: '#FFE5E5',
+    color: '#D32F2F',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  section: {
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#2D2438',
+    marginBottom: 12,
+  },
+  input: {
+    backgroundColor: '#FFF',
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderColor: '#E5DFF5',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    marginBottom: 12,
+  },
+  passwordContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF',
+    borderWidth: 1,
+    borderColor: '#E5DFF5',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+  },
+  passwordInput: {
+    flex: 1,
+    padding: 12,
+    fontSize: 16,
+  },
+  textArea: {
+    height: 100,
+    textAlignVertical: 'top',
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B5B87',
     marginBottom: 8,
   },
-  roleSelectorActive: {
-    borderColor: '#3b82f6',
-    backgroundColor: '#eff6ff',
+  categoryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 16,
   },
-  roleIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#f3f4f6',
-    justifyContent: 'center',
+  categoryButton: {
+    width: '30%',
+    aspectRatio: 1,
     alignItems: 'center',
-    marginRight: 12,
+    justifyContent: 'center',
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#8B7AB8',
+    backgroundColor: '#FFF',
   },
-  roleTitle: { fontSize: 15, fontWeight: '600', color: '#1f2937' },
-  roleSubtitle: { fontSize: 12, color: '#6b7280' },
+  categoryButtonActive: {
+    backgroundColor: '#8B7AB8',
+    borderColor: '#8B7AB8',
+  },
+  categoryLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#8B7AB8',
+    marginTop: 4,
+  },
+  categoryLabelActive: {
+    color: '#FFF',
+  },
+  registerButton: {
+    backgroundColor: '#8B7AB8',
+    padding: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  registerButtonText: {
+    color: '#FFF',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  loginLink: {
+    textAlign: 'center',
+    color: '#6B5B87',
+    marginTop: 20,
+    fontSize: 14,
+  },
+  loginLinkBold: {
+    fontWeight: '600',
+    color: '#8B7AB8',
+  },
 });

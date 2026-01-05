@@ -1,29 +1,29 @@
 /**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
+ * Lavender-Purple Theme
+ * Paleta lawendowo-fioletowa dla aplikacji Sessly
  */
 
 import { Platform } from 'react-native';
 
-const tintColorLight = '#0a7ea4';
-const tintColorDark = '#fff';
+const tintColorLight = '#8B7AB8';
+const tintColorDark = '#B8A3E0';
 
 export const Colors = {
   light: {
-    text: '#11181C',
-    background: '#fff',
-    tint: tintColorLight,
-    icon: '#687076',
-    tabIconDefault: '#687076',
-    tabIconSelected: tintColorLight,
+    text: '#2D2438',              // Ciemny fioletowy tekst
+    background: '#FAF8FF',        // Bardzo jasny lawendowy
+    tint: tintColorLight,         // Fioletowy tint
+    icon: '#6B5B87',              // Fioletowe ikony
+    tabIconDefault: '#9D8AC7',    // Przygaszony fiolet dla nieaktywnych
+    tabIconSelected: tintColorLight, // Aktywny tab
   },
   dark: {
-    text: '#ECEDEE',
-    background: '#151718',
-    tint: tintColorDark,
-    icon: '#9BA1A6',
-    tabIconDefault: '#9BA1A6',
-    tabIconSelected: tintColorDark,
+    text: '#F5F3FF',              // Prawie biały tekst
+    background: '#1A1425',        // Ciemny fioletowy
+    tint: tintColorDark,          // Jasny lawendowy tint
+    icon: '#9D8AC7',              // Fioletowe ikony
+    tabIconDefault: '#6B5B87',    // Przygaszony dla nieaktywnych
+    tabIconSelected: tintColorDark, // Aktywny tab
   },
 };
 

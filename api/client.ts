@@ -9,18 +9,25 @@ const BASE_URL = __DEV__
   ? (Platform.OS === 'android' ? `http://10.0.2.2:${DEV_PORT}/api` : `http://${DEV_HOST_IP}:${DEV_PORT}/api`)
   : 'https://api.twoja-produkcja.pl/api';
 
-export const api = axios.create({
+// Eksportuj instancję axios jako apiClient (default export)
+const apiClient = axios.create({
   baseURL: BASE_URL,
   timeout: 60000,
   headers: { 'Content-Type': 'application/json' },
 });
 
 // Dodaj JWT token do każdego żądania (jeśli użytkownik jest zalogowany)
-api.interceptors.request.use(
+apiClient.interceptors.request.use(
   async (config) => {
     try {
       // Pobierz token z AsyncStorage
-      const accessToken = await AsyncStorage.getItem('access_token');
+      let accessToken = await AsyncStorage.getItem('access_token');
+      
+      // ✅ FALLBACK do localStorage dla web
+      if (!accessToken && Platform.OS === 'web') {
+        accessToken = localStorage.getItem('access_token');
+      }
+      
       if (accessToken) {
         config.headers.Authorization = `Bearer ${accessToken}`;
       }
@@ -42,7 +49,7 @@ api.interceptors.request.use(
 );
 
 // Obsługa błędów i odświeżania tokenu
-api.interceptors.response.use(
+apiClient.interceptors.response.use(
   (res) => res,
   async (error) => {
     const originalRequest = error.config;
@@ -64,7 +71,13 @@ api.interceptors.response.use(
       originalRequest._retry = true;
 
       try {
-        const refreshToken = await AsyncStorage.getItem('refresh_token');
+        let refreshToken = await AsyncStorage.getItem('refresh_token');
+        
+        // ✅ FALLBACK do localStorage dla web
+        if (!refreshToken && Platform.OS === 'web') {
+          refreshToken = localStorage.getItem('refresh_token');
+        }
+        
         if (refreshToken) {
           const response = await axios.post(`${BASE_URL}/users/token/refresh/`, {
             refresh: refreshToken,
@@ -72,18 +85,33 @@ api.interceptors.response.use(
 
           const { access } = response.data;
           await AsyncStorage.setItem('access_token', access);
+          
+          // ✅ Zapisz też do localStorage na web
+          if (Platform.OS === 'web') {
+            localStorage.setItem('access_token', access);
+          }
 
           // Powtórz oryginalne żądanie z nowym tokenem
           originalRequest.headers.Authorization = `Bearer ${access}`;
-          return api(originalRequest);
+          return apiClient(originalRequest);
         }
       } catch (refreshError) {
         console.error('Token refresh failed:', refreshError);
         // Wyczyść tokeny i wyloguj użytkownika
         await AsyncStorage.multiRemove(['access_token', 'refresh_token', 'user']);
+        if (Platform.OS === 'web') {
+          localStorage.removeItem('access_token');
+          localStorage.removeItem('refresh_token');
+        }
       }
     }
 
     return Promise.reject(error);
   }
 );
+
+// ✅ Default export (dla import apiClient from './client')
+export default apiClient;
+
+// ✅ Named export (dla import { api } from './client')
+export const api = apiClient;

@@ -1,92 +1,140 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { getUserFavorites, toggleFavorite as apiToggleFavorite, FavoriteResponse } from '../api/favorites';
+import { useAuth } from './AuthContext';
 
-const FAVORITES_KEY = '@sessly_favorites';
-
-type FavoritesContextType = {
-  favorites: string[]; // Array of business IDs/slugs
+interface FavoritesContextType {
+  favorites: string[]; // Lista ID firm
+  favoritesData: FavoriteResponse[]; // Pełne dane firm
   isFavorite: (businessId: string) => boolean;
   toggleFavorite: (businessId: string) => Promise<void>;
-  clearFavorites: () => Promise<void>;
-  isLoading: boolean;
-};
+  loadFavorites: () => Promise<void>;
+  loading: boolean;
+  error: string | null;
+}
 
 const FavoritesContext = createContext<FavoritesContextType | undefined>(undefined);
 
-export function FavoritesProvider({ children }: { children: ReactNode }) {
+export const FavoritesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isLoggedIn } = useAuth();
   const [favorites, setFavorites] = useState<string[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [favoritesData, setFavoritesData] = useState<FavoriteResponse[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Load favorites from AsyncStorage on mount
-  useEffect(() => {
-    loadFavorites();
-  }, []);
-
-  const loadFavorites = async () => {
-    try {
-      const stored = await AsyncStorage.getItem(FAVORITES_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        console.log('✅ [Favorites] Loaded from storage:', parsed);
-        setFavorites(parsed);
-      }
-    } catch (error) {
-      console.error('❌ [Favorites] Failed to load:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const saveFavorites = async (newFavorites: string[]) => {
-    try {
-      await AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(newFavorites));
-      console.log('✅ [Favorites] Saved to storage:', newFavorites);
-    } catch (error) {
-      console.error('❌ [Favorites] Failed to save:', error);
-    }
-  };
-
-  const isFavorite = (businessId: string): boolean => {
-    return favorites.includes(businessId);
-  };
-
-  const toggleFavorite = async (businessId: string) => {
-    console.log('🔄 [Favorites] Toggling favorite:', businessId);
-    
-    setFavorites((prev) => {
-      const newFavorites = prev.includes(businessId)
-        ? prev.filter((id) => id !== businessId) // Remove
-        : [...prev, businessId]; // Add
-      
-      // Save to AsyncStorage
-      saveFavorites(newFavorites);
-      
-      console.log('✅ [Favorites] Updated:', {
-        businessId,
-        action: prev.includes(businessId) ? 'removed' : 'added',
-        total: newFavorites.length,
-      });
-      
-      return newFavorites;
-    });
-  };
-
-  const clearFavorites = async () => {
-    try {
-      await AsyncStorage.removeItem(FAVORITES_KEY);
+  /**
+   * Ładuje ulubione z backendu
+   */
+  const loadFavorites = useCallback(async () => {
+    if (!isLoggedIn) {
+      console.log('🔵 [FavoritesContext] User not logged in, skipping loadFavorites');
       setFavorites([]);
-      console.log('✅ [Favorites] Cleared all favorites');
-    } catch (error) {
-      console.error('❌ [Favorites] Failed to clear:', error);
+      setFavoritesData([]);
+      return;
     }
-  };
+
+    try {
+      setLoading(true);
+      setError(null);
+      console.log('🔵 [FavoritesContext] Loading favorites...');
+      
+      const data = await getUserFavorites();
+      
+      // Zapisz pełne dane
+      setFavoritesData(data);
+      
+      // Wyciągnij tylko ID do prostej listy
+      const ids = data.map(fav => fav.id);
+      setFavorites(ids);
+      
+      console.log('✅ [FavoritesContext] Loaded favorites:', ids.length);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Nie udało się załadować ulubionych';
+      console.error('❌ loadFavorites error:', message);
+      setError(message);
+      setFavorites([]);
+      setFavoritesData([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [isLoggedIn]);
+
+  /**
+   * Sprawdza czy firma jest w ulubionych
+   * @param businessId - UUID firmy
+   */
+  const isFavorite = useCallback((businessId: string): boolean => {
+    return favorites.includes(businessId);
+  }, [favorites]);
+
+  /**
+   * Dodaje/usuwa firmę z ulubionych
+   * @param businessId - UUID firmy (backend akceptuje bezpośrednio!)
+   */
+  const toggleFavorite = useCallback(async (businessId: string) => {
+    if (!isLoggedIn) {
+      console.warn('⚠️ [FavoritesContext] toggleFavorite: User not logged in');
+      return;
+    }
+
+    console.log('🔵 [FavoritesContext] toggleFavorite called with:', businessId);
+
+    // Optimistic UI update
+    const wasFavorite = favorites.includes(businessId);
+    
+    if (wasFavorite) {
+      setFavorites(prev => prev.filter(id => id !== businessId));
+      setFavoritesData(prev => prev.filter(fav => fav.id !== businessId));
+    } else {
+      setFavorites(prev => [...prev, businessId]);
+      // Pełne dane zostaną załadowane po pomyślnym API call
+    }
+
+    try {
+      // ✅ Wywołaj API (backend akceptuje UUID bezpośrednio!)
+      const result = await apiToggleFavorite(businessId);
+      
+      console.log('✅ [FavoritesContext] toggleFavorite success:', result);
+      
+      // Przeładuj ulubione żeby mieć aktualne dane
+      await loadFavorites();
+      
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Nie udało się zmienić statusu ulubionej';
+      console.error('❌ toggleFavorite error:', message);
+      setError(message);
+      
+      // Rollback na błędzie
+      if (wasFavorite) {
+        setFavorites(prev => [...prev, businessId]);
+      } else {
+        setFavorites(prev => prev.filter(id => id !== businessId));
+      }
+      
+      // Przeładuj z serwera żeby mieć pewność
+      await loadFavorites();
+    }
+  }, [favorites, isLoggedIn, loadFavorites]);
+
+  // Załaduj ulubione gdy użytkownik się zaloguje
+  useEffect(() => {
+    if (isLoggedIn) {
+      console.log('🔵 [FavoritesContext] User logged in, loading favorites');
+      loadFavorites();
+    } else {
+      console.log('🔵 [FavoritesContext] User logged out, clearing favorites');
+      setFavorites([]);
+      setFavoritesData([]);
+    }
+  }, [isLoggedIn, loadFavorites]);
 
   const value: FavoritesContextType = {
     favorites,
+    favoritesData,
     isFavorite,
     toggleFavorite,
-    clearFavorites,
-    isLoading,
+    loadFavorites,
+    loading,
+    error,
   };
 
   return (
@@ -94,12 +142,12 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
       {children}
     </FavoritesContext.Provider>
   );
-}
+};
 
-export function useFavorites(): FavoritesContextType {
+export const useFavorites = (): FavoritesContextType => {
   const context = useContext(FavoritesContext);
   if (!context) {
     throw new Error('useFavorites must be used within FavoritesProvider');
   }
   return context;
-}
+};

@@ -1,6 +1,9 @@
 import apiClient from './client';
 import { LoginRequest, LoginResponse, RegisterRequest, User } from '../types/api';
 import { saveToken, removeToken, getToken } from '../utils/storage';
+import { Business } from '../types/api';
+
+// ============ PODSTAWOWA AUTORYZACJA ============
 
 export const login = async (credentials: LoginRequest): Promise<LoginResponse> => {
   const response = await apiClient.post<LoginResponse>('/users/login/', credentials);
@@ -43,7 +46,7 @@ export const register = async (data: RegisterRequest): Promise<LoginResponse> =>
       console.log('✅ Tokens saved');
     }
     
-    return response.data;  // ← Zwróć LoginResponse
+    return response.data;
     
   } catch (error: any) {
     console.error('❌ Registration error:', error.response?.data);
@@ -109,4 +112,87 @@ export const changePassword = async (oldPassword: string, newPassword: string): 
     old_password: oldPassword,
     new_password: newPassword,
   });
+};
+
+// ============ REJESTRACJA BIZNESU ============
+
+export interface RegisterBusinessData {
+  // Dane użytkownika
+  username: string;
+  email: string;
+  password: string;
+  password2: string;
+  first_name?: string;
+  last_name?: string;
+  
+  // Dane biznesu
+  business_name: string;
+  business_category: 'hairdresser' | 'doctor' | 'beauty' | 'spa' | 'fitness' | 'other';
+  business_phone: string;
+  business_address_line1: string;
+  business_city: string;
+  business_postal_code: string;
+  business_description?: string;
+  business_nip?: string;
+}
+
+// Alias dla jasności
+export const registerAsCustomer = register;
+
+export const registerAsBusinessOwner = async (
+  data: RegisterBusinessData
+): Promise<{ user: LoginResponse; business: Business }> => {
+  console.log('🏢 Starting business owner registration');
+  
+  // KROK 1: Rejestruj użytkownika
+  const userData: RegisterRequest = {
+    username: data.username,
+    email: data.email,
+    password: data.password,
+    password2: data.password2,
+    first_name: data.first_name,
+    last_name: data.last_name,
+  };
+  
+  const user = await register(userData);
+  console.log('✅ User registered successfully');
+  
+  // KROK 2: Utwórz biznes
+  try {
+    // Generuj slug z nazwy firmy
+    const slug = data.business_name
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '') // Usuń polskie znaki
+      .replace(/[^a-z0-9\s-]/g, '')    // Usuń spec znaki
+      .trim()
+      .replace(/\s+/g, '-')            // Spacje → myślniki
+      .replace(/-+/g, '-');            // Wielokrotne → jeden
+    
+    const businessData = {
+      name: data.business_name,
+      slug: slug,
+      category: data.business_category,
+      description: data.business_description || '',
+      phone_number: data.business_phone,
+      address_line1: data.business_address_line1,
+      city: data.business_city,
+      postal_code: data.business_postal_code,
+      country: 'Polska',
+      nip: data.business_nip || undefined,
+    };
+    
+    console.log('📤 Creating business:', businessData);
+    const response = await apiClient.post<Business>('/businesses/', businessData);
+    console.log('✅ Business created successfully');
+    
+    return { user, business: response.data };
+    
+  } catch (error: any) {
+    console.error('❌ Business creation failed:', error.response?.data);
+    throw new Error(
+      'Konto użytkownika utworzone, ale nie udało się utworzyć firmy. ' +
+      'Dokończ proces w ustawieniach aplikacji.'
+    );
+  }
 };

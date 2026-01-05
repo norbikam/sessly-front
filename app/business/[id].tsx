@@ -223,24 +223,40 @@ export default function BusinessDetailScreen() {
 
   // ✅ Handle Favorite Toggle
   const handleFavoriteToggle = () => {
-    if (!business) return;
-    
-    // Animate
-    Animated.sequence([
-      Animated.timing(favoriteScale, {
-        toValue: 1.3,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(favoriteScale, {
-        toValue: 1,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-    ]).start();
+  if (!business) return;
+  
+  // ✅ Check if user is logged in
+  if (!isLoggedIn) {
+    Alert.alert(
+      'Wymagane logowanie',
+      'Aby dodać firmę do ulubionych, musisz się zalogować.',
+      [
+        { text: 'Anuluj', style: 'cancel' },
+        { 
+          text: 'Zaloguj się', 
+          onPress: () => router.push('/(auth)/login')
+        }
+      ]
+    );
+    return;
+  }
+  
+  // Animate
+  Animated.sequence([
+    Animated.timing(favoriteScale, {
+      toValue: 1.3,
+      duration: 100,
+      useNativeDriver: true,
+    }),
+    Animated.timing(favoriteScale, {
+      toValue: 1,
+      duration: 100,
+      useNativeDriver: true,
+    }),
+  ]).start();
 
-    toggleFavorite(businessId);
-  };
+  toggleFavorite(businessId);
+};
 
   // Loading state
   if (loading) {

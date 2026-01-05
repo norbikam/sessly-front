@@ -36,26 +36,47 @@ export interface Service {
 }
 
 export interface OpeningHours {
-  // flexible shape — backend may provide array or object per day
   [key: string]: any;
 }
 
-// ✅ ROZSZERZONE TYPY DLA APPOINTMENTS
 export interface Appointment {
   id: number | string;
   business_id?: number | string;
-  business?: string | Business; // Może być nazwa lub obiekt
+  business?: string | Business;
   service_id?: number | string;
-  service?: Service; // Obiekt usługi
+  service?: Service;
   user_id?: number | string;
-  date?: string; // format: YYYY-MM-DD
-  start?: string; // ISO datetime lub time
-  end?: string; // ISO datetime lub time
-  start_time?: string; // format: HH:MM
-  end_time?: string; // format: HH:MM
+  date?: string;
+  start?: string;
+  end?: string;
+  start_time?: string;
+  end_time?: string;
   status?: 'pending' | 'confirmed' | 'cancelled' | 'completed';
   notes?: string;
   created_at?: string;
   updated_at?: string;
   [key: string]: any;
+}
+
+// ============ TYPY DLA AUTORYZACJI ============
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  access: string;
+  refresh: string;
+  user: User;
+}
+
+export interface RegisterRequest {
+  username: string;
+  email: string;
+  password: string;
+  password2: string;
+  first_name?: string;
+  last_name?: string;
+  phone?: string;
 }

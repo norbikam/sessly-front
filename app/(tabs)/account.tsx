@@ -14,51 +14,64 @@ import Colors from '../../constants/Colors';
 
 export default function AccountScreen() {
   const { user, isLoggedIn, logout } = useAuth();
-  const { favorites, toggleFavorite } = useFavorites();
+  const { favorites, favoritesData, isFavorite } = useFavorites(); // ✅ Dodano favoritesData
   
   const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [favoriteBusinesses, setFavoriteBusinesses] = useState<Business[]>([]);
   const [loading, setLoading] = useState(false);
-  const [favoritesLoading, setFavoritesLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const fetchAppointments = async () => {
-    if (!isLoggedIn) return;
-    try {
-      setLoading(true);
-      const data = await getUserAppointments();
+const fetchAppointments = async () => {
+  if (!isLoggedIn) {
+    setAppointments([]);
+    return;
+  }
+  
+  try {
+    setLoading(true);
+    const data = await getUserAppointments();
+    
+    console.log('🔵 [AccountScreen] Appointments loaded:', {
+      data,
+      type: typeof data,
+      isArray: Array.isArray(data),
+    });
+    
+    // ✅ FIX: Upewnij się że data jest tablicą
+    if (Array.isArray(data)) {
       setAppointments(data);
-    } catch (err) {
-      console.error('Failed to fetch appointments:', err);
-    } finally {
-      setLoading(false);
+    } else if (data && typeof data === 'object') {
+      // Backend może zwracać { results: [...] } lub { data: [...] }
+      const responseData = data as any;
+      if (Array.isArray(responseData.results)) {
+        setAppointments(responseData.results);
+      } else if (Array.isArray(responseData.data)) {
+        setAppointments(responseData.data);
+      } else {
+        console.error('❌ Invalid appointments format:', data);
+        setAppointments([]);
+      }
+    } else {
+      console.error('❌ Appointments is not an array:', typeof data, data);
+      setAppointments([]);
     }
-  };
+  } catch (err) {
+    console.error('Failed to fetch appointments:', err);
+    setAppointments([]); // ✅ Ustaw pustą tablicę na błędzie
+  } finally {
+    setLoading(false);
+  }
+};
 
-  const loadFavoriteBusinesses = async () => {
-    if (favorites.length === 0) { setFavoriteBusinesses([]); return; }
-    try {
-      setFavoritesLoading(true);
-      const allBusinesses = await searchBusinesses();
-      const favs = allBusinesses.filter((b) => favorites.includes(b.slug || String(b.id)));
-      setFavoriteBusinesses(favs);
-    } catch (error) {
-      console.error('Error loading favorites:', error);
-    } finally {
-      setFavoritesLoading(false);
-    }
-  };
 
   useEffect(() => {
     fetchAppointments();
-    loadFavoriteBusinesses();
-  }, [isLoggedIn, favorites]);
+  }, [isLoggedIn]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([fetchAppointments(), loadFavoriteBusinesses()]);
+    await fetchAppointments();
     setRefreshing(false);
-  }, [favorites]);
+  }, []);
 
   if (!isLoggedIn) {
     return (
@@ -79,6 +92,9 @@ export default function AccountScreen() {
       style={styles.container} 
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.accent} />}
     >
+      {/* ✅ NOTCH FIX */}
+      <View style={{ paddingTop: Platform.OS === 'web' ? 0 : 38 }} />
+
       <View style={styles.profileSection}>
         <View style={styles.avatarPlaceholder}>
           <Ionicons name="person" size={40} color="#fff" />
@@ -93,7 +109,21 @@ export default function AccountScreen() {
         )}
       </View>
 
-      {/* ✅ PANEL SPECJALISTY - ZAKTUALIZOWANY */}
+      {/* ✅ STATYSTYKI */}
+      <View style={styles.statsContainer}>
+        <View style={styles.statBox}>
+          <Ionicons name="calendar-outline" size={24} color={Colors.accent} />
+          <Text style={styles.statNumber}>{appointments.length}</Text>
+          <Text style={styles.statLabel}>Wizyty</Text>
+        </View>
+        <View style={styles.statBox}>
+          <Ionicons name="heart-outline" size={24} color="#e74c3c" />
+          <Text style={styles.statNumber}>{favoritesData.length}</Text>
+          <Text style={styles.statLabel}>Ulubione</Text>
+        </View>
+      </View>
+
+      {/* PANEL SPECJALISTY */}
       {user?.is_specialist && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -101,68 +131,104 @@ export default function AccountScreen() {
             <Text style={styles.sectionTitle}>Zarządzanie Biznesem</Text>
           </View>
           
-          <View style={{ gap: 10 }}>
-            <TouchableOpacity 
-              style={styles.specialistMenuBtn}
-              onPress={() => router.push('/business/manage-services' as any)}
-            >
-              <View style={styles.specialistBtnIcon}>
-                <Ionicons name="list" size={20} color="#fff" />
-              </View>
-              <Text style={styles.specialistMenuBtnText}>Moje Usługi i Cennik</Text>
-              <Ionicons name="chevron-forward" size={18} color="#fff" style={{ opacity: 0.7 }} />
-            </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.specialistMenuBtn}
+            onPress={() => router.push('/business/manage-services' as any)}
+          >
+            <Ionicons name="list-outline" size={24} color={Colors.accent} style={styles.specialistMenuIcon} />
+            <Text style={styles.specialistMenuText}>Moje Usługi i Cennik</Text>
+            <Ionicons name="chevron-forward" size={20} color="#999" />
+          </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={[styles.specialistMenuBtn, { backgroundColor: '#34d399' }]}
-              onPress={() => router.push('/business/schedule' as any)}
-            >
-              <View style={[styles.specialistBtnIcon, { backgroundColor: '#059669' }]}>
-                <Ionicons name="calendar-number" size={20} color="#fff" />
-              </View>
-              <Text style={styles.specialistMenuBtnText}>Twój Grafik Wizyt</Text>
-              <Ionicons name="chevron-forward" size={18} color="#fff" style={{ opacity: 0.7 }} />
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity 
+            style={styles.specialistMenuBtn}
+            onPress={() => router.push('/business/schedule' as any)}
+          >
+            <Ionicons name="calendar" size={24} color={Colors.accent} style={styles.specialistMenuIcon} />
+            <Text style={styles.specialistMenuText}>Twój Grafik Wizyt</Text>
+            <Ionicons name="chevron-forward" size={20} color="#999" />
+          </TouchableOpacity>
         </View>
       )}
 
-      {/* REZERWACJE KLIENTA */}
+      {/* OSTATNIE WIZYTY */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Ionicons name="calendar" size={22} color={Colors.accent} />
-          <Text style={styles.sectionTitle}>Twoje wizyty ({appointments.length})</Text>
+          <Text style={styles.sectionTitle}>Twoje wizyty</Text>
         </View>
-        {appointments.length === 0 ? (
-          <Text style={styles.emptyText}>Brak nadchodzących wizyt.</Text>
+        
+        {loading ? (
+          <ActivityIndicator size="small" color={Colors.accent} style={{ marginVertical: 20 }} />
+        ) : appointments.length === 0 ? (
+          <Text style={styles.emptyText}>Nie masz żadnych wizyt</Text>
         ) : (
-          appointments.slice(0, 3).map((app) => (
-            <View key={String(app.id)} style={styles.appointmentSmallCard}>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontWeight: 'bold', color: '#333' }}>{app.service?.name}</Text>
-                <Text style={{ color: '#666', fontSize: 13, marginTop: 2 }}>
-                  {app.start 
-                    ? new Date(app.start).toLocaleString('pl-PL', {
-                        day: '2-digit',
-                        month: '2-digit',
-                        year: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      }) 
-                    : 'Termin nieustalony'}
-                </Text>
+          appointments.slice(0, 3).map((apt) => {
+            const status = apt.status || 'pending';
+            const statusColor = 
+              status === 'confirmed' ? '#10b981' : 
+              status === 'cancelled' ? '#ef4444' : 
+              '#f59e0b';
+            
+            return (
+              <View key={apt.id} style={styles.appointmentSmallCard}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.appointmentService}>{(apt.service as any)?.name || 'Usługa'}</Text>
+                  <Text style={styles.appointmentDate}>
+                    {apt.start ? new Date(apt.start).toLocaleDateString('pl-PL', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    }) : 'Brak daty'}
+                  </Text>
+                </View>
+                <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
+                  <Text style={styles.statusText}>
+                    {status === 'confirmed' ? 'Potwierdzona' : 
+                     status === 'cancelled' ? 'Anulowana' : 
+                     'Oczekuje'}
+                  </Text>
+                </View>
               </View>
-              <Ionicons name="chevron-forward" size={16} color="#ccc" />
-            </View>
-          ))
+            );
+          })
+        )}
+        
+        {appointments.length > 3 && (
+          <TouchableOpacity 
+            style={styles.viewAllButton}
+            onPress={() => router.push('/(tabs)/appointments' as any)}
+          >
+            <Text style={styles.viewAllButtonText}>Zobacz wszystkie wizyty</Text>
+            <Ionicons name="chevron-forward" size={16} color={Colors.accent} />
+          </TouchableOpacity>
         )}
       </View>
 
+      {/* USTAWIENIA */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Ustawienia</Text>
+        <View style={styles.sectionHeader}>
+          <Ionicons name="settings" size={22} color={Colors.accent} />
+          <Text style={styles.sectionTitle}>Ustawienia</Text>
+        </View>
+        
+        <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/account/edit-profile' as any)}>
+          <Ionicons name="person-outline" size={20} color="#666" />
+          <Text style={styles.menuItemText}>Edytuj profil</Text>
+          <Ionicons name="chevron-forward" size={20} color="#999" />
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/account/change-password' as any)}>
+          <Ionicons name="lock-closed-outline" size={20} color="#666" />
+          <Text style={styles.menuItemText}>Zmień hasło</Text>
+          <Ionicons name="chevron-forward" size={20} color="#999" />
+        </TouchableOpacity>
+
         <TouchableOpacity style={styles.menuItem} onPress={logout}>
-          <Ionicons name="log-out-outline" size={24} color="#e74c3c" />
-          <Text style={[styles.menuItemText, { color: '#e74c3c' }]}>Wyloguj się</Text>
+          <Ionicons name="log-out-outline" size={20} color="#ef4444" />
+          <Text style={[styles.menuItemText, { color: '#ef4444' }]}>Wyloguj się</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>
@@ -170,50 +236,190 @@ export default function AccountScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f9fafb' },
-  notLoggedInContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40, marginTop: 100 },
-  profileSection: { backgroundColor: '#fff', padding: 24, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#eee' },
-  avatarPlaceholder: { width: 80, height: 80, borderRadius: 40, backgroundColor: Colors.accent, justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
-  userName: { fontSize: 22, fontWeight: '700', color: '#333' },
-  userEmail: { fontSize: 14, color: '#666', marginTop: 4 },
-  specialistBadge: { marginTop: 10, backgroundColor: '#eff6ff', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: '#3b82f6' },
-  specialistBadgeText: { color: '#3b82f6', fontSize: 10, fontWeight: '800' },
-  section: { backgroundColor: '#fff', marginTop: 12, padding: 16 },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 8 },
-  sectionTitle: { fontSize: 18, fontWeight: '700', color: '#333', flex: 1 },
+  container: {
+    flex: 1,
+    backgroundColor: '#f9fafb',
+  },
+  notLoggedInContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  profileSection: {
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    paddingVertical: 30,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  avatarPlaceholder: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: Colors.accent,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  userName: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#111',
+    marginBottom: 4,
+  },
+  userEmail: {
+    fontSize: 14,
+    color: '#666',
+  },
+  specialistBadge: {
+    marginTop: 12,
+    backgroundColor: '#fef3c7',
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+  },
+  specialistBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#92400e',
+    letterSpacing: 0.5,
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  statBox: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statNumber: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#111',
+    marginTop: 8,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
+  },
+  section: {
+    backgroundColor: '#fff',
+    marginTop: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111',
+    marginLeft: 8,
+  },
   specialistMenuBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#3b82f6',
-    padding: 12,
-    borderRadius: 16,
-    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    backgroundColor: '#f9fafb',
+    borderRadius: 8,
+    marginBottom: 8,
   },
-  specialistBtnIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
+  specialistMenuIcon: {
+    marginRight: 12,
   },
-  specialistMenuBtnText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 15,
+  specialistMenuText: {
     flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#111',
   },
-  menuItem: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 12, marginBottom: 8, backgroundColor: '#f8f8f8' },
-  menuItemText: { fontSize: 16, marginLeft: 12, color: '#333', flex: 1 },
-  appointmentSmallCard: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    paddingVertical: 12, 
-    borderBottomWidth: 1, 
-    borderBottomColor: '#f0f0f0' 
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
   },
-  emptyText: { color: '#999', fontStyle: 'italic' },
-  loginButton: { backgroundColor: Colors.accent, padding: 15, borderRadius: 10, width: '100%', alignItems: 'center', marginTop: 20 },
-  loginButtonText: { color: '#fff', fontWeight: 'bold' },
-  title: { fontSize: 24, fontWeight: 'bold', marginTop: 20 }
+  menuItemText: {
+    flex: 1,
+    fontSize: 15,
+    color: '#111',
+    marginLeft: 12,
+  },
+  appointmentSmallCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f9fafb',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  appointmentService: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#111',
+    marginBottom: 4,
+  },
+  appointmentDate: {
+    fontSize: 13,
+    color: '#666',
+  },
+  statusBadge: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+  },
+  statusText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  viewAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+    paddingVertical: 10,
+  },
+  viewAllButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.accent,
+    marginRight: 4,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+    paddingVertical: 20,
+  },
+  loginButton: {
+    backgroundColor: Colors.accent,
+    paddingVertical: 12,
+    paddingHorizontal: 32,
+    borderRadius: 8,
+    marginTop: 20,
+  },
+  loginButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#111',
+    marginTop: 16,
+  },
 });
