@@ -23,6 +23,7 @@ import {
 } from '../../api/business';
 import { Business } from '../../types/api';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import Colors from '../../constants/Colors';
 import SearchBar from '../../components/search/SearchBar';
 import CategoryFilter from '../../components/categories/CategoryFilter';
@@ -54,6 +55,47 @@ function useDebounce<T>(value: T, delay: number): T {
   }, [value, delay]);
 
   return debouncedValue;
+}
+
+// ✨ Skeleton Card Loader
+function SkeletonCard() {
+  const shimmerAnim = useState(new Animated.Value(0))[0];
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmerAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(shimmerAnim, {
+          toValue: 0,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, []);
+
+  const opacity = shimmerAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.3, 0.7],
+  });
+
+  return (
+    <View style={[styles.card, { marginBottom: 12 }]}>
+      <View style={styles.cardHeader}>
+        <Animated.View style={[styles.iconContainer, { opacity, backgroundColor: '#e0e0e0' }]} />
+        <View style={styles.cardInfo}>
+          <Animated.View style={[styles.skeletonText, { width: 160, height: 18, opacity }]} />
+          <Animated.View style={[styles.skeletonText, { width: 80, height: 14, marginTop: 8, opacity }]} />
+        </View>
+      </View>
+      <Animated.View style={[styles.skeletonText, { width: '100%', height: 14, marginTop: 12, opacity }]} />
+      <Animated.View style={[styles.skeletonText, { width: '80%', height: 14, marginTop: 6, opacity }]} />
+    </View>
+  );
 }
 
 // Animated Heart Component
@@ -88,7 +130,7 @@ function AnimatedHeart({ isFavorite, onPress }: { isFavorite: boolean; onPress: 
         <Ionicons 
           name={isFavorite ? "heart" : "heart-outline"} 
           size={24} 
-          color={isFavorite ? "#e74c3c" : "#888"} 
+          color={isFavorite ? "#e74c3c" : "#666"} 
         />
       </Animated.View>
     </TouchableOpacity>
@@ -164,7 +206,7 @@ export default function HomeScreen() {
   
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [categories, setCategories] = useState<BusinessCategory[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   
@@ -279,40 +321,38 @@ export default function HomeScreen() {
   }, []);
 
   // Sort businesses
-const sortedBusinesses = useMemo(() => {
-  // ✅ FIX: Sprawdź czy businesses jest tablicą
-  console.log('🔍 [DEBUG] sortedBusinesses check:', {
-    type: typeof businesses,
-    isArray: Array.isArray(businesses),
-    length: businesses?.length,
-  });
-  
-  if (!Array.isArray(businesses)) {
-    console.error('❌ businesses is NOT an array!', businesses);
-    return [];
-  }
-  
-  const sorted = [...businesses];
-  
-  switch (sortBy) {
-    case 'name-asc':
-      sorted.sort((a, b) => a.name.localeCompare(b.name));
-      break;
-    case 'name-desc':
-      sorted.sort((a, b) => b.name.localeCompare(a.name));
-      break;
-    case 'newest':
-      sorted.sort((a, b) => {
-        const aId = String(a.id);
-        const bId = String(b.id);
-        return bId.localeCompare(aId);
-      });
-      break;
-  }
-  
-  return sorted;
-}, [businesses, sortBy]);
-
+  const sortedBusinesses = useMemo(() => {
+    console.log('🔍 [DEBUG] sortedBusinesses check:', {
+      type: typeof businesses,
+      isArray: Array.isArray(businesses),
+      length: businesses?.length,
+    });
+    
+    if (!Array.isArray(businesses)) {
+      console.error('❌ businesses is NOT an array!', businesses);
+      return [];
+    }
+    
+    const sorted = [...businesses];
+    
+    switch (sortBy) {
+      case 'name-asc':
+        sorted.sort((a, b) => a.name.localeCompare(b.name));
+        break;
+      case 'name-desc':
+        sorted.sort((a, b) => b.name.localeCompare(a.name));
+        break;
+      case 'newest':
+        sorted.sort((a, b) => {
+          const aId = String(a.id);
+          const bId = String(b.id);
+          return bId.localeCompare(aId);
+        });
+        break;
+    }
+    
+    return sorted;
+  }, [businesses, sortBy]);
 
   const renderBusinessCard = ({ item }: { item: Business }) => {
     const businessId = item.slug || String(item.id);
@@ -321,57 +361,65 @@ const sortedBusinesses = useMemo(() => {
 
     return (
       <TouchableOpacity 
-        style={styles.card} 
+        style={styles.cardWrapper}
         onPress={() => handleBusinessPress(item)}
-        activeOpacity={0.7}
+        activeOpacity={0.8}
       >
-        {/* ✨ Favorite Button - Top Right Corner */}
-        <View style={styles.favoriteContainer}>
-          <AnimatedHeart 
-            isFavorite={favorite} 
-            onPress={() => handleFavoritePress(businessId)} 
-          />
-        </View>
-
-        <View style={styles.cardHeader}>
-          <View style={styles.iconContainer}>
-            <Ionicons name="business" size={28} color={Colors.accent} />
+        <LinearGradient
+          colors={['#ffffff', '#f8f9fa']}
+          style={styles.card}
+        >
+          {/* ✨ Favorite Button - Top Right Corner */}
+          <View style={styles.favoriteContainer}>
+            <AnimatedHeart 
+              isFavorite={favorite} 
+              onPress={() => handleFavoritePress(businessId)} 
+            />
           </View>
-          <View style={styles.cardInfo}>
-            <Text style={styles.businessName} numberOfLines={1}>{item.name}</Text>
-            <View style={styles.categoryBadge}>
-              <Text style={styles.category}>{categoryDisplay}</Text>
+
+          <View style={styles.cardHeader}>
+            <LinearGradient
+              colors={[Colors.gradientStart, Colors.gradientEnd]}
+              style={styles.iconContainer}
+            >
+              <Ionicons name="business" size={28} color="#fff" />
+            </LinearGradient>
+            <View style={styles.cardInfo}>
+              <Text style={styles.businessName} numberOfLines={1}>{item.name}</Text>
+              <View style={styles.categoryBadge}>
+                <Text style={styles.category}>{categoryDisplay}</Text>
+              </View>
             </View>
           </View>
-        </View>
-        
-        {item.description && (
-          <Text style={styles.description} numberOfLines={2}>
-            {item.description}
-          </Text>
-        )}
-        
-        {item.address && (
-          <View style={styles.addressContainer}>
-            <Ionicons name="location-outline" size={14} color="#666" />
-            <Text style={styles.address} numberOfLines={1}>{item.address}</Text>
-          </View>
-        )}
+          
+          {item.description && (
+            <Text style={styles.description} numberOfLines={2}>
+              {item.description}
+            </Text>
+          )}
+          
+          {item.address && (
+            <View style={styles.addressContainer}>
+              <Ionicons name="location-outline" size={14} color="#666" />
+              <Text style={styles.address} numberOfLines={1}>{item.address}</Text>
+            </View>
+          )}
+        </LinearGradient>
       </TouchableOpacity>
     );
   };
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
+      {/* Header with Gradient */}
+      <LinearGradient colors={[Colors.gradientStart, Colors.gradientEnd]} style={styles.header}>
         <View style={styles.greetingContainer}>
           <Text style={styles.greeting}>
             Cześć{user ? `, ${user.first_name || user.username}` : ''}!
           </Text>
           <Text style={styles.subtitle}>Znajdź idealną usługę dla siebie</Text>
         </View>
-      </View>
+      </LinearGradient>
 
       {/* Search Bar */}
       <View style={styles.searchContainer}>
@@ -404,7 +452,13 @@ const sortedBusinesses = useMemo(() => {
       </View>
 
       {/* Business List */}
-      {searching ? (
+      {loading ? (
+        <View style={styles.listContent}>
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </View>
+      ) : searching ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.accent} />
           <Text style={styles.loadingText}>Wyszukiwanie...</Text>
@@ -448,33 +502,33 @@ const sortedBusinesses = useMemo(() => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#f0f4f9',
   },
   header: {
-    backgroundColor: '#fff',
     paddingTop: Platform.OS === 'ios' ? 50 : 20,
-    paddingBottom: 16,
+    paddingBottom: 20,
     paddingHorizontal: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
   },
   greetingContainer: {
     marginBottom: 4,
   },
   greeting: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#111',
-    marginBottom: 4,
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#fff',
+    marginBottom: 6,
   },
   subtitle: {
-    fontSize: 14,
-    color: '#666',
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.95)',
+    fontWeight: '500',
   },
   searchContainer: {
     backgroundColor: '#fff',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#e5e7eb',
   },
@@ -490,20 +544,20 @@ const styles = StyleSheet.create({
   },
   resultsCount: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#111',
   },
   sortButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
     backgroundColor: '#f0f4ff',
-    borderRadius: 8,
+    borderRadius: 10,
   },
   sortButtonText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
     color: Colors.accent,
     marginLeft: 6,
   },
@@ -511,79 +565,93 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 32,
   },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+  cardWrapper: {
+    marginBottom: 14,
+    borderRadius: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  card: {
+    borderRadius: 16,
+    padding: 18,
     position: 'relative',
-    paddingRight: 44, // Make space for heart
+    paddingRight: 50,
   },
   favoriteContainer: {
     position: 'absolute',
-    top: 12,
-    right: 12,
+    top: 14,
+    right: 14,
     zIndex: 10,
   },
   favoriteButton: {
-    padding: 4,
+    padding: 6,
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   iconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#f0f4ff',
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: 14,
   },
   cardInfo: {
     flex: 1,
   },
   businessName: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 17,
+    fontWeight: '800',
     color: '#111',
-    marginBottom: 4,
+    marginBottom: 6,
   },
   categoryBadge: {
     backgroundColor: '#e0f2fe',
-    borderRadius: 6,
-    paddingVertical: 2,
-    paddingHorizontal: 8,
+    borderRadius: 8,
+    paddingVertical: 3,
+    paddingHorizontal: 10,
     alignSelf: 'flex-start',
   },
   category: {
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#0284c7',
     textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   description: {
     fontSize: 13,
-    color: '#666',
-    marginBottom: 8,
-    lineHeight: 18,
+    color: '#555',
+    marginBottom: 10,
+    lineHeight: 19,
   },
   addressContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#f9fafb',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
   },
   address: {
     fontSize: 12,
     color: '#666',
-    marginLeft: 4,
-    flex: 1,
+    marginLeft: 6,
+    fontWeight: '500',
   },
   loadingContainer: {
     flex: 1,
@@ -595,6 +663,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 14,
     color: '#666',
+    fontWeight: '500',
   },
   emptyContainer: {
     flex: 1,
@@ -603,8 +672,8 @@ const styles = StyleSheet.create({
     paddingVertical: 60,
   },
   emptyTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 20,
+    fontWeight: '800',
     color: '#111',
     marginTop: 16,
     marginBottom: 8,
@@ -621,8 +690,8 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     paddingBottom: Platform.OS === 'ios' ? 34 : 20,
   },
   modalHeader: {
@@ -635,13 +704,13 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '800',
     color: '#111',
   },
   sortOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
+    padding: 18,
     borderBottomWidth: 1,
     borderBottomColor: '#f3f4f6',
   },
@@ -653,9 +722,14 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#111',
     marginLeft: 12,
+    fontWeight: '500',
   },
   sortOptionTextActive: {
-    fontWeight: '600',
+    fontWeight: '700',
     color: Colors.accent,
+  },
+  skeletonText: {
+    backgroundColor: '#e0e0e0',
+    borderRadius: 4,
   },
 });

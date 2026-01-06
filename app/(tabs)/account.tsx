@@ -6,62 +6,60 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { useFavorites } from '../../contexts/FavoritesContext';
-import { getUserAppointments, cancelAppointment } from '../../api/appointments';
-import { searchBusinesses } from '../../api/business';
-import { Appointment, Business } from '../../types/api';
+import { getUserAppointments } from '../../api/appointments';
+import { Appointment } from '../../types/api';
 import { router } from 'expo-router';
 import Colors from '../../constants/Colors';
 
 export default function AccountScreen() {
   const { user, isLoggedIn, logout } = useAuth();
-  const { favorites, favoritesData, isFavorite } = useFavorites(); // ✅ Dodano favoritesData
+  const { favoritesData } = useFavorites();
   
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-const fetchAppointments = async () => {
-  if (!isLoggedIn) {
-    setAppointments([]);
-    return;
-  }
-  
-  try {
-    setLoading(true);
-    const data = await getUserAppointments();
+  const fetchAppointments = async () => {
+    if (!isLoggedIn) {
+      setAppointments([]);
+      return;
+    }
     
-    console.log('🔵 [AccountScreen] Appointments loaded:', {
-      data,
-      type: typeof data,
-      isArray: Array.isArray(data),
-    });
-    
-    // ✅ FIX: Upewnij się że data jest tablicą
-    if (Array.isArray(data)) {
-      setAppointments(data);
-    } else if (data && typeof data === 'object') {
-      // Backend może zwracać { results: [...] } lub { data: [...] }
-      const responseData = data as any;
-      if (Array.isArray(responseData.results)) {
-        setAppointments(responseData.results);
-      } else if (Array.isArray(responseData.data)) {
-        setAppointments(responseData.data);
+    try {
+      setLoading(true);
+      const data = await getUserAppointments();
+      
+      console.log('🔵 [AccountScreen] Appointments loaded:', {
+        data,
+        type: typeof data,
+        isArray: Array.isArray(data),
+      });
+      
+      // ✅ FIX: Upewnij się że data jest tablicą
+      if (Array.isArray(data)) {
+        setAppointments(data);
+      } else if (data && typeof data === 'object') {
+        // Backend może zwracać { results: [...] } lub { data: [...] }
+        const responseData = data as any;
+        if (Array.isArray(responseData.results)) {
+          setAppointments(responseData.results);
+        } else if (Array.isArray(responseData.data)) {
+          setAppointments(responseData.data);
+        } else {
+          console.error('❌ Invalid appointments format:', data);
+          setAppointments([]);
+        }
       } else {
-        console.error('❌ Invalid appointments format:', data);
+        console.error('❌ Appointments is not an array:', typeof data, data);
         setAppointments([]);
       }
-    } else {
-      console.error('❌ Appointments is not an array:', typeof data, data);
+    } catch (err) {
+      console.error('Failed to fetch appointments:', err);
       setAppointments([]);
+    } finally {
+      setLoading(false);
     }
-  } catch (err) {
-    console.error('Failed to fetch appointments:', err);
-    setAppointments([]); // ✅ Ustaw pustą tablicę na błędzie
-  } finally {
-    setLoading(false);
-  }
-};
-
+  };
 
   useEffect(() => {
     fetchAppointments();
@@ -72,6 +70,14 @@ const fetchAppointments = async () => {
     await fetchAppointments();
     setRefreshing(false);
   }, []);
+
+  // ✅ Handle appointment press - navigate to detail
+  const handleAppointmentPress = (appointment: Appointment) => {
+    router.push({
+      pathname: '/appointment/[id]',
+      params: { id: String(appointment.id) }
+    });
+  };
 
   if (!isLoggedIn) {
     return (
@@ -161,49 +167,67 @@ const fetchAppointments = async () => {
         {loading ? (
           <ActivityIndicator size="small" color={Colors.accent} style={{ marginVertical: 20 }} />
         ) : appointments.length === 0 ? (
-          <Text style={styles.emptyText}>Nie masz żadnych wizyt</Text>
+          <View style={styles.emptyStateContainer}>
+            <Ionicons name="calendar-outline" size={64} color="#ccc" />
+            <Text style={styles.emptyText}>Nie masz żadnych wizyt</Text>
+            <Text style={styles.emptySubtext}>Umów swoją pierwszą wizytę już teraz!</Text>
+          </View>
         ) : (
-          appointments.slice(0, 3).map((apt) => {
-            const status = apt.status || 'pending';
-            const statusColor = 
-              status === 'confirmed' ? '#10b981' : 
-              status === 'cancelled' ? '#ef4444' : 
-              '#f59e0b';
+          <>
+            {appointments.slice(0, 3).map((apt) => {
+              const status = apt.status || 'pending';
+              const statusColor = 
+                status === 'confirmed' ? '#10b981' : 
+                status === 'cancelled' ? '#ef4444' : 
+                '#f59e0b';
+              
+              return (
+                <TouchableOpacity
+                  key={apt.id}
+                  style={styles.appointmentCard}
+                  onPress={() => handleAppointmentPress(apt)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.appointmentContent}>
+                    <View style={styles.appointmentInfo}>
+                      <Text style={styles.appointmentService}>
+                        {(apt.service as any)?.name || 'Usługa'}
+                      </Text>
+                      <Text style={styles.appointmentDate}>
+                        {apt.start ? new Date(apt.start).toLocaleDateString('pl-PL', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        }) : 'Brak daty'}
+                      </Text>
+                    </View>
+                    <View style={styles.appointmentRight}>
+                      <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
+                        <Text style={styles.statusText}>
+                          {status === 'confirmed' ? 'Potwierdzona' : 
+                           status === 'cancelled' ? 'Anulowana' : 
+                           'Oczekuje'}
+                        </Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={20} color="#999" style={{ marginTop: 8 }} />
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
             
-            return (
-              <View key={apt.id} style={styles.appointmentSmallCard}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.appointmentService}>{(apt.service as any)?.name || 'Usługa'}</Text>
-                  <Text style={styles.appointmentDate}>
-                    {apt.start ? new Date(apt.start).toLocaleDateString('pl-PL', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    }) : 'Brak daty'}
-                  </Text>
-                </View>
-                <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
-                  <Text style={styles.statusText}>
-                    {status === 'confirmed' ? 'Potwierdzona' : 
-                     status === 'cancelled' ? 'Anulowana' : 
-                     'Oczekuje'}
-                  </Text>
-                </View>
-              </View>
-            );
-          })
-        )}
-        
-        {appointments.length > 3 && (
-          <TouchableOpacity 
-            style={styles.viewAllButton}
-            onPress={() => router.push('/(tabs)/appointments' as any)}
-          >
-            <Text style={styles.viewAllButtonText}>Zobacz wszystkie wizyty</Text>
-            <Ionicons name="chevron-forward" size={16} color={Colors.accent} />
-          </TouchableOpacity>
+            {appointments.length > 3 && (
+              <TouchableOpacity 
+                style={styles.viewAllButton}
+                onPress={() => router.push('/(tabs)/appointments' as any)}
+              >
+                <Text style={styles.viewAllButtonText}>Zobacz wszystkie wizyty</Text>
+                <Ionicons name="chevron-forward" size={16} color={Colors.accent} />
+              </TouchableOpacity>
+            )}
+          </>
         )}
       </View>
 
@@ -238,7 +262,7 @@ const fetchAppointments = async () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#f0f4f9',
   },
   notLoggedInContainer: {
     flex: 1,
@@ -265,7 +289,7 @@ const styles = StyleSheet.create({
   },
   userName: {
     fontSize: 22,
-    fontWeight: 'bold',
+    fontWeight: '800',
     color: '#111',
     marginBottom: 4,
   },
@@ -300,7 +324,7 @@ const styles = StyleSheet.create({
   },
   statNumber: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: '800',
     color: '#111',
     marginTop: 8,
   },
@@ -322,7 +346,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#111',
     marginLeft: 8,
   },
@@ -357,23 +381,39 @@ const styles = StyleSheet.create({
     color: '#111',
     marginLeft: 12,
   },
-  appointmentSmallCard: {
+  appointmentCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  appointmentContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f9fafb',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 8,
+    justifyContent: 'space-between',
+  },
+  appointmentInfo: {
+    flex: 1,
   },
   appointmentService: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '700',
     color: '#111',
     marginBottom: 4,
   },
   appointmentDate: {
     fontSize: 13,
     color: '#666',
+  },
+  appointmentRight: {
+    alignItems: 'flex-end',
   },
   statusBadge: {
     paddingVertical: 4,
@@ -382,7 +422,7 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#fff',
   },
   viewAllButton: {
@@ -394,15 +434,26 @@ const styles = StyleSheet.create({
   },
   viewAllButtonText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
     color: Colors.accent,
     marginRight: 4,
   },
+  emptyStateContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
   emptyText: {
-    fontSize: 14,
+    fontSize: 16,
+    fontWeight: '700',
     color: '#999',
     textAlign: 'center',
-    paddingVertical: 20,
+    marginTop: 16,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#aaa',
+    textAlign: 'center',
+    marginTop: 6,
   },
   loginButton: {
     backgroundColor: Colors.accent,
@@ -414,11 +465,11 @@ const styles = StyleSheet.create({
   loginButtonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   title: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: '800',
     color: '#111',
     marginTop: 16,
   },
