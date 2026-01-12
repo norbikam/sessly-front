@@ -1,116 +1,118 @@
-import { getToken } from '../utils/storage';
+import { Business } from '../types/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
-const API_BASE_URL = 'http://localhost8000/api';
-
-// ✅ Response z backendu dla listy ulubionych
-export interface FavoriteResponse {
-  id: string;
-  name: string;
-  slug: string;
-  category: string;
-  description?: string;
-  city: string;
-  address_line1: string;
-  address_line2?: string;
-  postal_code: string;
-  country: string;
-  phone_number?: string;
-  website_url?: string;
-  services_count: number;
-}
-
-// ✅ Response dla toggle favorite
-export interface ToggleFavoriteResponse {
-  is_favorite: boolean;
-  message?: string;
-}
+const FAVORITES_STORAGE_KEY = '@sessly_favorites';
 
 /**
- * Pobiera listę ulubionych firm użytkownika
+ * ⚠️ UWAGA: Backend nie ma endpointów dla ulubionych
+ * Używamy lokalnego storage (AsyncStorage/localStorage)
  */
-export const getUserFavorites = async (): Promise<FavoriteResponse[]> => {
-  const token = await getToken();
-  
-  if (!token) {
-    console.error('❌ [API] getUserFavorites: Brak tokenu');
-    throw new Error('Brak tokenu autoryzacji');
-  }
-
-  const url = `${API_BASE_URL}/users/favorites/`;
-  console.log('🔵 [API] getUserFavorites URL:', url);
-
-  const response = await fetch(url, {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-    },
-  });
-
-  console.log('🔵 [API] getUserFavorites status:', response.status);
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    console.error('❌ [API] getUserFavorites error response:', errorData);
-    throw new Error(errorData.detail || 'Nie udało się pobrać ulubionych');
-  }
-
-  const data = await response.json();
-  console.log('✅ [API] getUserFavorites success:', data.length, 'favorites');
-  
-  return data;
-};
 
 /**
- * Dodaje lub usuwa firmę z ulubionych
- * @param businessId - UUID firmy (akceptowane bezpośrednio przez backend!)
+ * Pobierz listę ulubionych biznesów z lokalnego storage
  */
-export const toggleFavorite = async (businessId: string): Promise<ToggleFavoriteResponse> => {
-  const token = await getToken();
-  
-  if (!token) {
-    console.error('❌ [API] toggleFavorite: Brak tokenu');
-    throw new Error('Brak tokenu autoryzacji');
-  }
-
-  console.log('🔵 [API] toggleFavorite businessId:', businessId);
-  
-  // ✅ Backend akceptuje UUID bezpośrednio!
-  const url = `${API_BASE_URL}/users/favorites/${businessId}/`;
-  console.log('🔵 [API] toggleFavorite URL:', url);
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  console.log('🔵 [API] toggleFavorite status:', response.status);
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    console.error('❌ [API] toggleFavorite error response:', errorData);
-    throw new Error(errorData.detail || 'Nie udało się zmienić statusu ulubionej');
-  }
-
-  const data = await response.json();
-  console.log('✅ [API] toggleFavorite success:', data);
-  
-  return {
-    is_favorite: data.is_favorite,
-    message: data.detail,
-  };
-};
-
-/**
- * Sprawdza czy firma jest w ulubionych (dla pojedynczej firmy)
- */
-export const isFavorite = async (businessId: string): Promise<boolean> => {
+export const getFavorites = async (): Promise<Business[]> => {
   try {
-    const favorites = await getUserFavorites();
-    return favorites.some(fav => fav.id === businessId);
+    let favoritesJson: string | null = null;
+
+    if (Platform.OS === 'web') {
+      favoritesJson = localStorage.getItem(FAVORITES_STORAGE_KEY);
+    } else {
+      favoritesJson = await AsyncStorage.getItem(FAVORITES_STORAGE_KEY);
+    }
+
+    if (!favoritesJson) {
+      console.log('✅ [getFavorites] No favorites in storage');
+      return [];
+    }
+
+    const favorites: Business[] = JSON.parse(favoritesJson);
+    console.log('✅ [getFavorites] Loaded from storage:', favorites.length);
+    return favorites;
   } catch (error) {
-    console.error('❌ [API] isFavorite error:', error);
-    return false;
+    console.error('❌ [getFavorites] Error:', error);
+    return [];
   }
+};
+
+/**
+ * Zapisz listę ulubionych do lokalnego storage
+ */
+const saveFavorites = async (favorites: Business[]): Promise<void> => {
+  try {
+    const favoritesJson = JSON.stringify(favorites);
+
+    if (Platform.OS === 'web') {
+      localStorage.setItem(FAVORITES_STORAGE_KEY, favoritesJson);
+    } else {
+      await AsyncStorage.setItem(FAVORITES_STORAGE_KEY, favoritesJson);
+    }
+
+    console.log('✅ [saveFavorites] Saved to storage:', favorites.length);
+  } catch (error) {
+    console.error('❌ [saveFavorites] Error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Dodaj biznes do ulubionych (lokalnie)
+ */
+export const addFavorite = async (business: Business): Promise<void> => {
+  try {
+    const favorites = await getFavorites();
+    
+    // Sprawdź czy już nie jest w ulubionych
+    const alreadyExists = favorites.some(b => String(b.id) === String(business.id));
+    
+    if (alreadyExists) {
+      console.log('⚠️ [addFavorite] Already in favorites');
+      return;
+    }
+
+    favorites.push(business);
+    await saveFavorites(favorites);
+    
+    console.log('✅ [addFavorite] Added to favorites:', business.id);
+  } catch (error) {
+    console.error('❌ [addFavorite] Error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Usuń biznes z ulubionych (lokalnie)
+ */
+export const removeFavorite = async (businessId: string): Promise<void> => {
+  try {
+    const favorites = await getFavorites();
+    const filtered = favorites.filter(b => String(b.id) !== String(businessId));
+    
+    await saveFavorites(filtered);
+    
+    console.log('✅ [removeFavorite] Removed from favorites:', businessId);
+  } catch (error) {
+    console.error('❌ [removeFavorite] Error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Toggle (dodaj/usuń) biznes z ulubionych (lokalnie)
+ */
+export const toggleFavorite = async (business: Business, isFavorite: boolean): Promise<void> => {
+  if (isFavorite) {
+    await removeFavorite(String(business.id));
+  } else {
+    await addFavorite(business);
+  }
+};
+
+/**
+ * Sprawdź czy biznes jest w ulubionych
+ */
+export const checkIsFavorite = async (businessId: string): Promise<boolean> => {
+  const favorites = await getFavorites();
+  return favorites.some(b => String(b.id) === String(businessId));
 };

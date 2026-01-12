@@ -1,6 +1,5 @@
-import { getToken } from '../utils/storage';
-
-const API_BASE_URL = 'http://192.168.1.209:8000/api';
+import apiClient from './client';
+import { Appointment } from '../types/api';
 
 // ✅ Typy z backendu
 export interface AppointmentService {
@@ -14,18 +13,6 @@ export interface AppointmentService {
   price_currency: string;
   is_active: boolean;
   color?: string;
-}
-
-export interface Appointment {
-  id: string;
-  business: string; // slug
-  service: AppointmentService;
-  status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
-  start: string; // ISO datetime
-  end: string; // ISO datetime
-  notes: string;
-  google_event_id?: string;
-  created_at: string;
 }
 
 export interface AppointmentFilters {
@@ -59,149 +46,106 @@ export interface AvailabilityResponse {
 
 /**
  * Pobiera listę wizyt użytkownika
+ * Endpoint: GET /users/appointments/
  * @param filters - Filtry (status, time)
  */
-export const getUserAppointments = async (filters?: AppointmentFilters): Promise<Appointment[]> => {
-  const token = await getToken();
-  
-  if (!token) {
-    console.error('❌ [API] getUserAppointments: Brak tokenu');
-    throw new Error('Brak tokenu autoryzacji');
-  }
+export const getUserAppointments = async (
+  filters?: AppointmentFilters
+): Promise<Appointment[]> => {
+  try {
+    const params = new URLSearchParams();
+    if (filters?.status) params.append('status', filters.status);
+    if (filters?.time) params.append('time', filters.time);
 
-  let url = `${API_BASE_URL}/users/appointments/`;
-  
-  // Dodaj filtry do URL
-  const params = new URLSearchParams();
-  if (filters?.status) params.append('status', filters.status);
-  if (filters?.time) params.append('time', filters.time);
-  
-  if (params.toString()) {
-    url += `?${params.toString()}`;
-  }
+    const url = `/users/appointments/${params.toString() ? `?${params}` : ''}`;
+    console.log('📤 [getUserAppointments] URL:', url);
 
-  console.log('🔵 [API] getUserAppointments URL:', url);
+    const response = await apiClient.get<any>(url);
+    console.log('✅ [getUserAppointments] Response:', response.data);
 
-  const response = await fetch(url, {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-    },
-  });
+    // ✅ FIX: Normalizacja różnych formatów odpowiedzi
+    let appointments: Appointment[] = [];
 
-  console.log('🔵 [API] getUserAppointments status:', response.status);
+    if (Array.isArray(response.data)) {
+      appointments = response.data;
+    } else if (response.data?.results && Array.isArray(response.data.results)) {
+      appointments = response.data.results;
+    } else if (response.data?.data && Array.isArray(response.data.data)) {
+      appointments = response.data.data;
+    } else {
+      console.warn('⚠️ [getUserAppointments] Unexpected format:', response.data);
+      return [];
+    }
 
-  if (!response.ok) {
-    const errorData = await response.json();
-    console.error('❌ [API] getUserAppointments error:', errorData);
-    
-    // Backend zwraca 404 dla niezaimplementowanego endpointu
-    if (response.status === 404) {
+    console.log(`✅ [getUserAppointments] Loaded ${appointments.length} appointments`);
+    return appointments;
+  } catch (error: any) {
+    console.error('❌ [getUserAppointments] Error:', error);
+
+    // Jeśli endpoint nie istnieje (404), zwróć pustą tablicę
+    if (error?.response?.status === 404) {
       console.warn('⚠️ Endpoint /users/appointments/ not implemented yet');
-      return []; // Zwróć pustą tablicę zamiast rzucać błąd
+      return [];
     }
-    
-    throw new Error(errorData.detail || 'Nie udało się pobrać wizyt');
-  }
 
-  const data = await response.json();
-  
-  // ✅ FIX: Sprawdź format i zwróć tablicę
-  console.log('🔵 [API] getUserAppointments response:', {
-    data,
-    type: typeof data,
-    isArray: Array.isArray(data),
-  });
-  
-  // Zwróć tablicę
-  if (Array.isArray(data)) {
-    console.log('✅ [API] getUserAppointments success:', data.length, 'appointments');
-    return data;
-  } else if (data && typeof data === 'object') {
-    // Backend może zwracać { results: [...] }
-    const responseData: any = data;
-    if (Array.isArray(responseData.results)) {
-      console.log('✅ [API] getUserAppointments success (from results):', responseData.results.length);
-      return responseData.results;
-    } else if (Array.isArray(responseData.data)) {
-      console.log('✅ [API] getUserAppointments success (from data):', responseData.data.length);
-      return responseData.data;
-    }
+    throw error;
   }
-  
-  console.error('❌ [API] getUserAppointments: Invalid format', data);
-  return [];
 };
+
+// Alias dla kompatybilności wstecznej
+export const getMyAppointments = getUserAppointments;
 
 /**
  * Pobiera szczegóły pojedynczej wizyty
+ * Endpoint: GET /users/appointments/{id}/
  * @param appointmentId - UUID wizyty
  */
-export const getAppointmentDetail = async (appointmentId: string): Promise<Appointment> => {
-  const token = await getToken();
-  
-  if (!token) {
-    throw new Error('Brak tokenu autoryzacji');
+export const getAppointmentDetail = async (
+  appointmentId: string
+): Promise<Appointment> => {
+  try {
+    console.log('📤 [getAppointmentDetail] ID:', appointmentId);
+    const response = await apiClient.get<Appointment>(
+      `/users/appointments/${appointmentId}/`
+    );
+    console.log('✅ [getAppointmentDetail] Success:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('❌ [getAppointmentDetail] Error:', error);
+    throw error;
   }
-
-  const url = `${API_BASE_URL}/users/appointments/${appointmentId}/`;
-  console.log('🔵 [API] getAppointmentDetail URL:', url);
-
-  const response = await fetch(url, {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-    },
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.detail || 'Nie udało się pobrać szczegółów wizyty');
-  }
-
-  const data = await response.json();
-  console.log('✅ [API] getAppointmentDetail success:', data);
-  
-  return data;
 };
 
 /**
  * Anuluje wizytę
+ * Endpoint: POST /users/appointments/{id}/cancel/
  * @param appointmentId - UUID wizyty
  */
-export const cancelAppointment = async (appointmentId: string): Promise<Appointment> => {
-  const token = await getToken();
-  
-  if (!token) {
-    throw new Error('Brak tokenu autoryzacji');
+export const cancelAppointment = async (
+  appointmentId: string
+): Promise<Appointment> => {
+  try {
+    console.log('📤 [cancelAppointment] ID:', appointmentId);
+    const response = await apiClient.post<any>(
+      `/users/appointments/${appointmentId}/cancel/`,
+      {}
+    );
+    console.log('✅ [cancelAppointment] Response:', response.data);
+
+    // Backend zwraca { data: Appointment, message: "..." }
+    if (response.data.data) {
+      return response.data.data as Appointment;
+    }
+    return response.data as Appointment;
+  } catch (error) {
+    console.error('❌ [cancelAppointment] Error:', error);
+    throw error;
   }
-
-  const url = `${API_BASE_URL}/users/appointments/${appointmentId}/cancel/`;
-  console.log('🔵 [API] cancelAppointment URL:', url);
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  console.log('🔵 [API] cancelAppointment status:', response.status);
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    console.error('❌ [API] cancelAppointment error:', errorData);
-    throw new Error(errorData.message || 'Nie udało się anulować wizyty');
-  }
-
-  const responseData = await response.json();
-  console.log('✅ [API] cancelAppointment success:', responseData);
-  
-  // Backend zwraca { data: Appointment, message: "..." }
-  return responseData.data || responseData;
 };
 
 /**
  * Tworzy nową rezerwację
+ * Endpoint: POST /businesses/{slug}/appointments/
  * @param businessSlug - Slug firmy
  * @param data - Dane rezerwacji
  */
@@ -209,41 +153,29 @@ export const createAppointment = async (
   businessSlug: string,
   data: CreateAppointmentData
 ): Promise<CreateAppointmentResponse> => {
-  const token = await getToken();
-  
-  if (!token) {
-    throw new Error('Brak tokenu autoryzacji');
+  try {
+    console.log('📤 [createAppointment] Slug:', businessSlug, 'Data:', data);
+    const response = await apiClient.post<CreateAppointmentResponse>(
+      `/businesses/${businessSlug}/appointments/`,
+      data
+    );
+    console.log('✅ [createAppointment] Success:', response.data);
+    return response.data;
+  } catch (error: any) {
+    console.error('❌ [createAppointment] Error:', error);
+    
+    const errorMessage =
+      error?.response?.data?.detail ||
+      error?.response?.data?.message ||
+      'Nie udało się utworzyć rezerwacji';
+    
+    throw new Error(errorMessage);
   }
-
-  const url = `${API_BASE_URL}/businesses/${businessSlug}/appointments/`;
-  console.log('🔵 [API] createAppointment URL:', url);
-  console.log('🔵 [API] createAppointment data:', data);
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(data),
-  });
-
-  console.log('🔵 [API] createAppointment status:', response.status);
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    console.error('❌ [API] createAppointment error:', errorData);
-    throw new Error(errorData.detail || errorData.message || 'Nie udało się utworzyć rezerwacji');
-  }
-
-  const responseData = await response.json();
-  console.log('✅ [API] createAppointment success:', responseData);
-  
-  return responseData;
 };
 
 /**
  * Pobiera dostępne godziny dla usługi w danym dniu
+ * Endpoint: GET /businesses/{slug}/availability/?service_id={serviceId}&date={date}
  * @param businessSlug - Slug firmy
  * @param serviceId - UUID usługi
  * @param date - Data (YYYY-MM-DD)
@@ -253,31 +185,148 @@ export const getAvailability = async (
   serviceId: string,
   date: string
 ): Promise<AvailabilityResponse> => {
-  const token = await getToken();
-  
-  if (!token) {
-    throw new Error('Brak tokenu autoryzacji');
+  try {
+    const url = `/businesses/${businessSlug}/availability/?service_id=${serviceId}&date=${date}`;
+    console.log('📤 [getAvailability] URL:', url);
+
+    const response = await apiClient.get<AvailabilityResponse>(url);
+    console.log('✅ [getAvailability] Success:', response.data);
+    
+    return response.data;
+  } catch (error) {
+    console.error('❌ [getAvailability] Error:', error);
+    throw error;
   }
+};
 
-  const url = `${API_BASE_URL}/businesses/${businessSlug}/availability/?service_id=${serviceId}&date=${date}`;
-  console.log('🔵 [API] getAvailability URL:', url);
-
-  const response = await fetch(url, {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-    },
-  });
-
-  console.log('🔵 [API] getAvailability status:', response.status);
-
-  if (!response.ok) {
-    const errorData = await response.json();
-    console.error('❌ [API] getAvailability error:', errorData);
-    throw new Error(errorData.detail || 'Nie udało się pobrać dostępności');
+/**
+ * Usuwa wizytę (dla właściciela biznesu)
+ * Endpoint: DELETE /users/appointments/{id}/
+ * @param appointmentId - UUID wizyty
+ */
+export const deleteAppointment = async (appointmentId: string): Promise<void> => {
+  try {
+    console.log('📤 [deleteAppointment] ID:', appointmentId);
+    await apiClient.delete(`/users/appointments/${appointmentId}/`);
+    console.log('✅ [deleteAppointment] Success');
+  } catch (error) {
+    console.error('❌ [deleteAppointment] Error:', error);
+    throw error;
   }
+};
 
-  const data = await response.json();
-  console.log('✅ [API] getAvailability success:', data);
-  
-  return data;
+// ========================
+// Business Owner Functions
+// ========================
+
+/**
+ * Pobiera wizyty dla biznesu właściciela
+ * Endpoint: GET /businesses/{slug}/appointments/
+ * @param businessSlug - Slug firmy
+ * @param filters - Filtry (status, start_date, end_date)
+ */
+export const getBusinessAppointments = async (
+  businessSlug: string,
+  filters?: {
+    status?: 'pending' | 'confirmed' | 'cancelled' | 'completed';
+    start_date?: string;
+    end_date?: string;
+  }
+): Promise<Appointment[]> => {
+  try {
+    const params = new URLSearchParams();
+    if (filters?.status) params.append('status', filters.status);
+    if (filters?.start_date) params.append('start_date', filters.start_date);
+    if (filters?.end_date) params.append('end_date', filters.end_date);
+
+    const url = `/businesses/${businessSlug}/appointments/${
+      params.toString() ? `?${params}` : ''
+    }`;
+    console.log('📤 [getBusinessAppointments] URL:', url);
+
+    const response = await apiClient.get<any>(url);
+    console.log('✅ [getBusinessAppointments] Response:', response.data);
+
+    // Normalizacja
+    if (Array.isArray(response.data)) {
+      return response.data;
+    } else if (response.data?.results) {
+      return response.data.results;
+    } else if (response.data?.data) {
+      return response.data.data;
+    }
+
+    return [];
+  } catch (error) {
+    console.error('❌ [getBusinessAppointments] Error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Potwierdza wizytę (dla właściciela)
+ * Endpoint: PATCH /businesses/{slug}/appointments/{id}/
+ * @param businessSlug - Slug firmy
+ * @param appointmentId - UUID wizyty
+ */
+export const confirmAppointment = async (
+  businessSlug: string,
+  appointmentId: string
+): Promise<Appointment> => {
+  try {
+    console.log('📤 [confirmAppointment] Slug:', businessSlug, 'ID:', appointmentId);
+    const response = await apiClient.patch<Appointment>(
+      `/businesses/${businessSlug}/appointments/${appointmentId}/`,
+      { status: 'confirmed' }
+    );
+    console.log('✅ [confirmAppointment] Success:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('❌ [confirmAppointment] Error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Anuluje wizytę (dla właściciela)
+ * Endpoint: PATCH /businesses/{slug}/appointments/{id}/
+ * @param businessSlug - Slug firmy
+ * @param appointmentId - UUID wizyty
+ */
+export const cancelBusinessAppointment = async (
+  businessSlug: string,
+  appointmentId: string
+): Promise<Appointment> => {
+  try {
+    console.log('📤 [cancelBusinessAppointment] Slug:', businessSlug, 'ID:', appointmentId);
+    const response = await apiClient.patch<Appointment>(
+      `/businesses/${businessSlug}/appointments/${appointmentId}/`,
+      { status: 'cancelled' }
+    );
+    console.log('✅ [cancelBusinessAppointment] Success:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('❌ [cancelBusinessAppointment] Error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Usuwa wizytę (dla właściciela)
+ * Endpoint: DELETE /businesses/{slug}/appointments/{id}/
+ * @param businessSlug - Slug firmy
+ * @param appointmentId - UUID wizyty
+ */
+export const deleteBusinessAppointment = async (
+  businessSlug: string,
+  appointmentId: string
+): Promise<void> => {
+  try {
+    console.log('📤 [deleteBusinessAppointment] Slug:', businessSlug, 'ID:', appointmentId);
+    await apiClient.delete(`/businesses/${businessSlug}/appointments/${appointmentId}/`);
+    console.log('✅ [deleteBusinessAppointment] Success');
+  } catch (error) {
+    console.error('❌ [deleteBusinessAppointment] Error:', error);
+    throw error;
+  }
 };

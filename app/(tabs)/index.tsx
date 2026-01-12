@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   Platform,
   Pressable,
-  Animated,
   Modal,
   Alert
 } from 'react-native';
@@ -31,7 +30,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const SORT_KEY = '@sessly_sort_preference';
 
-// Sort options
 type SortOption = 'name-asc' | 'name-desc' | 'newest';
 
 const SORT_OPTIONS = [
@@ -40,7 +38,6 @@ const SORT_OPTIONS = [
   { value: 'newest', label: 'Najnowsze', icon: 'time-outline' },
 ];
 
-// Debounce hook
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
 
@@ -48,96 +45,44 @@ function useDebounce<T>(value: T, delay: number): T {
     const handler = setTimeout(() => {
       setDebouncedValue(value);
     }, delay);
-
-    return () => {
-      clearTimeout(handler);
-    };
+    return () => clearTimeout(handler);
   }, [value, delay]);
 
   return debouncedValue;
 }
 
-// ✨ Skeleton Card Loader
 function SkeletonCard() {
-  const shimmerAnim = useState(new Animated.Value(0))[0];
-
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(shimmerAnim, {
-          toValue: 1,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(shimmerAnim, {
-          toValue: 0,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-      ])
-    ).start();
-  }, []);
-
-  const opacity = shimmerAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.3, 0.7],
-  });
-
   return (
-    <View style={[styles.card, { marginBottom: 12 }]}>
+    <View style={[styles.card, { backgroundColor: '#f0f0f0', marginBottom: 12 }]}>
       <View style={styles.cardHeader}>
-        <Animated.View style={[styles.iconContainer, { opacity, backgroundColor: '#e0e0e0' }]} />
+        <View style={[styles.iconContainer, { backgroundColor: '#e0e0e0' }]} />
         <View style={styles.cardInfo}>
-          <Animated.View style={[styles.skeletonText, { width: 160, height: 18, opacity }]} />
-          <Animated.View style={[styles.skeletonText, { width: 80, height: 14, marginTop: 8, opacity }]} />
+          <View style={[styles.skeletonText, { width: 160, height: 18 }]} />
+          <View style={[styles.skeletonText, { width: 80, height: 14, marginTop: 8 }]} />
         </View>
       </View>
-      <Animated.View style={[styles.skeletonText, { width: '100%', height: 14, marginTop: 12, opacity }]} />
-      <Animated.View style={[styles.skeletonText, { width: '80%', height: 14, marginTop: 6, opacity }]} />
+      <View style={[styles.skeletonText, { width: '100%', height: 14, marginTop: 12 }]} />
+      <View style={[styles.skeletonText, { width: '80%', height: 14, marginTop: 6 }]} />
     </View>
   );
 }
 
-// Animated Heart Component
 function AnimatedHeart({ isFavorite, onPress }: { isFavorite: boolean; onPress: () => void }) {
-  const scale = useState(new Animated.Value(1))[0];
-
-  const handlePress = () => {
-    // Animate scale
-    Animated.sequence([
-      Animated.timing(scale, {
-        toValue: 1.3,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(scale, {
-        toValue: 1,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-    ]).start();
-
-    onPress();
-  };
-
   return (
     <TouchableOpacity 
       style={styles.favoriteButton}
-      onPress={handlePress}
+      onPress={onPress}
       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
     >
-      <Animated.View style={{ transform: [{ scale }] }}>
-        <Ionicons 
-          name={isFavorite ? "heart" : "heart-outline"} 
-          size={24} 
-          color={isFavorite ? "#e74c3c" : "#666"} 
-        />
-      </Animated.View>
+      <Ionicons 
+        name={isFavorite ? "heart" : "heart-outline"} 
+        size={24} 
+        color={isFavorite ? "#e74c3c" : "#666"} 
+      />
     </TouchableOpacity>
   );
 }
 
-// Sort Modal
 function SortModal({ 
   visible, 
   onClose, 
@@ -217,14 +162,11 @@ export default function HomeScreen() {
   
   const debouncedSearch = useDebounce(searchQuery, 500);
 
-  // Load sort preference
   useEffect(() => {
     const loadSortPreference = async () => {
       try {
         const saved = await AsyncStorage.getItem(SORT_KEY);
-        if (saved) {
-          setSortBy(saved as SortOption);
-        }
+        if (saved) setSortBy(saved as SortOption);
       } catch (error) {
         console.error('Failed to load sort preference:', error);
       }
@@ -232,16 +174,6 @@ export default function HomeScreen() {
     loadSortPreference();
   }, []);
 
-  // Save sort preference
-  const saveSortPreference = async (sort: SortOption) => {
-    try {
-      await AsyncStorage.setItem(SORT_KEY, sort);
-    } catch (error) {
-      console.error('Failed to save sort preference:', error);
-    }
-  };
-
-  // Load categories
   useEffect(() => {
     const loadCategories = async () => {
       try {
@@ -254,7 +186,6 @@ export default function HomeScreen() {
     loadCategories();
   }, []);
 
-  // Load businesses
   useEffect(() => {
     loadBusinesses();
   }, [debouncedSearch, selectedCategory]);
@@ -285,8 +216,8 @@ export default function HomeScreen() {
     });
   };
 
-  // ✅ LOGIN GUARD dla favorites
-  const handleFavoritePress = async (businessId: string) => {
+  // ✅ Obsługa ulubionych - wymaga logowania
+  const handleFavoritePress = async (business: Business) => {
     if (!isLoggedIn) {
       Alert.alert(
         'Wymagane logowanie',
@@ -302,17 +233,19 @@ export default function HomeScreen() {
       return;
     }
     
-    await toggleFavorite(String(businessId));
+    try {
+      await toggleFavorite(business);
+    } catch (error: any) {
+      console.error('Toggle favorite failed:', error);
+    }
   };
 
   const handleSortSelect = (sort: SortOption) => {
     setSortBy(sort);
-    saveSortPreference(sort);
+    AsyncStorage.setItem(SORT_KEY, sort).catch(() => {});
   };
 
-  // ✅ useCallback - stabilne handlery
   const handleCategorySelect = useCallback((categorySlug: string) => {
-    console.log('🔵 [HomeScreen] Category selected:', categorySlug);
     setSelectedCategory(categorySlug);
   }, []);
 
@@ -320,18 +253,8 @@ export default function HomeScreen() {
     setSearchQuery(text);
   }, []);
 
-  // Sort businesses
   const sortedBusinesses = useMemo(() => {
-    console.log('🔍 [DEBUG] sortedBusinesses check:', {
-      type: typeof businesses,
-      isArray: Array.isArray(businesses),
-      length: businesses?.length,
-    });
-    
-    if (!Array.isArray(businesses)) {
-      console.error('❌ businesses is NOT an array!', businesses);
-      return [];
-    }
+    if (!Array.isArray(businesses)) return [];
     
     const sorted = [...businesses];
     
@@ -354,9 +277,15 @@ export default function HomeScreen() {
     return sorted;
   }, [businesses, sortBy]);
 
+  const formatBusinessAddress = (business: Business): string => {
+    if (business.address) return business.address;
+    const parts = [business.address_line1, business.city].filter(Boolean);
+    return parts.join(', ');
+  };
+
   const renderBusinessCard = ({ item }: { item: Business }) => {
-    const businessId = item.slug || String(item.id);
-    const favorite = isFavorite(businessId);
+    const businessId = String(item.id);
+    const favorite = isLoggedIn ? isFavorite(businessId) : false;
     const categoryDisplay = item.category || 'Inne';
 
     return (
@@ -369,13 +298,15 @@ export default function HomeScreen() {
           colors={['#ffffff', '#f8f9fa']}
           style={styles.card}
         >
-          {/* ✨ Favorite Button - Top Right Corner */}
-          <View style={styles.favoriteContainer}>
-            <AnimatedHeart 
-              isFavorite={favorite} 
-              onPress={() => handleFavoritePress(businessId)} 
-            />
-          </View>
+          {/* ✅ Serduszko tylko dla zalogowanych */}
+          {isLoggedIn && (
+            <View style={styles.favoriteContainer}>
+              <AnimatedHeart 
+                isFavorite={favorite} 
+                onPress={() => handleFavoritePress(item)} 
+              />
+            </View>
+          )}
 
           <View style={styles.cardHeader}>
             <LinearGradient
@@ -398,10 +329,12 @@ export default function HomeScreen() {
             </Text>
           )}
           
-          {item.address && (
+          {(item.address || item.city) && (
             <View style={styles.addressContainer}>
               <Ionicons name="location-outline" size={14} color="#666" />
-              <Text style={styles.address} numberOfLines={1}>{item.address}</Text>
+              <Text style={styles.address} numberOfLines={1}>
+                {formatBusinessAddress(item)}
+              </Text>
             </View>
           )}
         </LinearGradient>
@@ -411,14 +344,25 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header with Gradient */}
+      {/* Header */}
       <LinearGradient colors={[Colors.gradientStart, Colors.gradientEnd]} style={styles.header}>
         <View style={styles.greetingContainer}>
           <Text style={styles.greeting}>
-            Cześć{user ? `, ${user.first_name || user.username}` : ''}!
+            Cześć{user ? `, ${user.first_name || user.username}` : ''}! 👋
           </Text>
           <Text style={styles.subtitle}>Znajdź idealną usługę dla siebie</Text>
         </View>
+        
+        {/* ✅ Login button dla niezalogowanych */}
+        {!isLoggedIn && (
+          <TouchableOpacity 
+            style={styles.loginHeaderButton}
+            onPress={() => router.push('/(auth)/login')}
+          >
+            <Ionicons name="person-circle-outline" size={24} color="#fff" />
+            <Text style={styles.loginHeaderText}>Zaloguj</Text>
+          </TouchableOpacity>
+        )}
       </LinearGradient>
 
       {/* Search Bar */}
@@ -510,9 +454,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   greetingContainer: {
-    marginBottom: 4,
+    flex: 1,
   },
   greeting: {
     fontSize: 26,
@@ -524,6 +471,20 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: 'rgba(255,255,255,0.95)',
     fontWeight: '500',
+  },
+  loginHeaderButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    gap: 6,
+  },
+  loginHeaderText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
   },
   searchContainer: {
     backgroundColor: '#fff',
@@ -578,7 +539,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 18,
     position: 'relative',
-    paddingRight: 50,
   },
   favoriteContainer: {
     position: 'absolute',

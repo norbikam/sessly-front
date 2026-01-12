@@ -1,364 +1,316 @@
-/**
- * Favorites Screen - Backend API Version
- * Pobiera ulubione z backend zamiast lokalnego AsyncStorage
- */
-
-import React, { useEffect, useState } from 'react';
+import React, { useCallback } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   FlatList,
+  StyleSheet,
   TouchableOpacity,
-  ActivityIndicator,
   RefreshControl,
-  Animated,
+  ActivityIndicator,
+  Platform,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useFavorites } from '../../contexts/FavoritesContext';
-import { searchBusinesses } from '../../api/business';
-import { Business } from '../../types/api';
-import Colors from '@/constants/Colors';
-
-
-/**
- * Animowane serduszko dla przycisku ulubione
- */
-const AnimatedHeart = ({ isFavorite, onPress }: { isFavorite: boolean; onPress: () => void }) => {
-  const scaleValue = React.useRef(new Animated.Value(1)).current;
-
-  React.useEffect(() => {
-    Animated.sequence([
-      Animated.timing(scaleValue, { toValue: 1.3, duration: 150, useNativeDriver: true }),
-      Animated.timing(scaleValue, { toValue: 1, duration: 150, useNativeDriver: true }),
-    ]).start();
-  }, [isFavorite]);
-
-  return (
-    <TouchableOpacity onPress={onPress} style={styles.favoriteBtn}>
-      <Animated.View style={{ transform: [{ scale: scaleValue }] }}>
-        <Ionicons
-          name={isFavorite ? 'heart' : 'heart-outline'}
-          size={24}
-          color={isFavorite ? '#e74c3c' : '#888'}
-        />
-      </Animated.View>
-    </TouchableOpacity>
-  );
-};
+import { useAuth } from '../../contexts/AuthContext';
+import Colors from '../../constants/Colors';
+import type { Business } from '../../types/api';
 
 export default function FavoritesScreen() {
   const router = useRouter();
-  const { favoritesData, toggleFavorite, loadFavorites, loading: favoritesLoading } = useFavorites();
-  
-  const [businesses, setBusinesses] = useState<Business[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { isLoggedIn } = useAuth();
+  const { favoritesData, isFavorite, toggleFavorite, refreshFavorites, loading } = useFavorites();
+  const [refreshing, setRefreshing] = React.useState(false);
 
-  /**
-   * Załaduj pełne dane firm z API na podstawie favoritesData z backend
-   */
-  const loadFavoriteBusinesses = async () => {
-    if (!favoritesData || favoritesData.length === 0) {
-      setBusinesses([]);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      // favoritesData już zawiera dane firm z backend
-      // Ale możemy jeszcze pobrać dodatkowe dane jeśli potrzebujemy
-      const businessList: Business[] = favoritesData.map(fav => ({
-        id: fav.business.id,
-        name: fav.business.name,
-        slug: fav.business.slug,
-        category: fav.business.category || '',
-        description: fav.business.description || '',
-        address: fav.business.address || '',
-        phone: fav.business.phone || '',
-        email: fav.business.email || '',
-        website: fav.business.website || '',
-        latitude: fav.business.latitude || 0,
-        longitude: fav.business.longitude || 0,
-        // Dodatkowe pola jeśli są w API
-        opening_hours: [],
-        services: [],
-        is_active: true,
-        created_at: fav.created_at,
-      }));
-
-      setBusinesses(businessList);
-      console.log('✅ Favorite businesses loaded:', businessList.length);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Nie udało się załadować firm';
-      setError(errorMessage);
-      console.error('❌ loadFavoriteBusinesses error:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  /**
-   * useEffect: załaduj dane firm przy zmianie favoritesData
-   */
-  useEffect(() => {
-    loadFavoriteBusinesses();
-  }, [favoritesData]);
-
-  /**
-   * Pull-to-refresh
-   */
-  const onRefresh = async () => {
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadFavorites(); // Odświeża favoritesData z backend
+    await refreshFavorites();
     setRefreshing(false);
-  };
+  }, [refreshFavorites]);
 
-  /**
-   * Obsługa toggle favorite
-   */
-  const handleToggleFavorite = async (businessId: number | string) => {
-    await toggleFavorite(businessId);
-  };
-
-  /**
-   * Nawigacja do szczegółów firmy
-   */
   const handleBusinessPress = (business: Business) => {
-    router.push(`/business/${business.id}` as any);
+    router.push({
+      pathname: '/business/[id]',
+      params: { id: business.slug || String(business.id) },
+    });
   };
 
-  /**
-   * RENDER: Loading state
-   */
-  if (loading || favoritesLoading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.accent} />
-        <Text style={styles.loadingText}>Ładowanie ulubionych...</Text>
-      </View>
-    );
+const handleRemoveFavorite = async (business: Business) => {
+  try {
+    await toggleFavorite(business); // ✅ Przekazujemy cały obiekt
+    await refreshFavorites(); // Odśwież listę
+  } catch (error) {
+    console.error('Failed to remove favorite:', error);
   }
+};
 
-  /**
-   * RENDER: Error state
-   */
-  if (error) {
+  const formatBusinessAddress = (business: Business): string => {
+    if (business.address) return business.address;
+    const parts = [business.address_line1, business.city].filter(Boolean);
+    return parts.join(', ');
+  };
+
+  const renderBusinessCard = ({ item }: { item: Business }) => {
+    const businessId = item.slug || String(item.id);
+    const favorite = isFavorite(businessId);
+
     return (
-      <View style={styles.emptyContainer}>
-        <Ionicons name="alert-circle-outline" size={80} color="#999" />
-        <Text style={styles.emptyTitle}>Wystąpił błąd</Text>
-        <Text style={styles.emptyText}>{error}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={loadFavorites}>
-          <Text style={styles.retryButtonText}>Spróbuj ponownie</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  /**
-   * RENDER: Empty state
-   */
-  if (businesses.length === 0) {
-    return (
-      <View style={styles.emptyContainer}>
-        <Ionicons name="heart-outline" size={80} color="#999" />
-        <Text style={styles.emptyTitle}>Brak ulubionych firm</Text>
-        <Text style={styles.emptyText}>
-          Dodaj firmy do ulubionych, aby szybko do nich wracać
-        </Text>
-        <TouchableOpacity
-          style={styles.exploreButton}
-          onPress={() => router.push('/(tabs)' as any)}
-        >
-          <Text style={styles.exploreButtonText}>Przeglądaj firmy</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  /**
-   * RENDER: Lista ulubionych firm
-   */
-  return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Ulubione</Text>
-        <Text style={styles.headerSubtitle}>
-          {businesses.length} {businesses.length === 1 ? 'firma' : 'firm'}
-        </Text>
-      </View>
-
-      <FlatList
-        data={businesses}
-        keyExtractor={(item) => item.id.toString()}
-        renderItem={({ item }) => (
+      <TouchableOpacity
+        style={styles.cardWrapper}
+        onPress={() => handleBusinessPress(item)}
+        activeOpacity={0.8}
+      >
+        <LinearGradient colors={['#ffffff', '#f8f9fa']} style={styles.card}>
+          {/* Remove Button */}
           <TouchableOpacity
-            style={styles.card}
-            onPress={() => handleBusinessPress(item)}
-            activeOpacity={0.7}
+            style={styles.removeButton}
+            onPress={() => handleRemoveFavorite(item)} // ✅ Przekazujemy item (Business)
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            {/* Ikona firmy */}
-            <View style={styles.cardIcon}>
-              <Ionicons name="business" size={32} color={Colors.accent} />
-            </View>
+            <Ionicons name="heart" size={24} color="#e74c3c" />
+          </TouchableOpacity>
 
-            {/* Informacje firmy */}
-            <View style={styles.cardContent}>
+          <View style={styles.cardHeader}>
+            <LinearGradient
+              colors={[Colors.gradientStart, Colors.gradientEnd]}
+              style={styles.iconContainer}
+            >
+              <Ionicons name="business" size={28} color="#fff" />
+            </LinearGradient>
+            <View style={styles.cardInfo}>
               <Text style={styles.businessName} numberOfLines={1}>
                 {item.name}
               </Text>
-
-              {item.category && (
-                <View style={styles.categoryBadge}>
-                  <Text style={styles.categoryText}>{item.category}</Text>
-                </View>
-              )}
-
-              {item.description && (
-                <Text style={styles.businessDescription} numberOfLines={2}>
-                  {item.description}
-                </Text>
-              )}
-
-              {item.address && (
-                <View style={styles.addressRow}>
-                  <Ionicons name="location-outline" size={14} color="#666" />
-                  <Text style={styles.addressText} numberOfLines={1}>
-                    {item.address}
-                  </Text>
-                </View>
-              )}
+              <View style={styles.categoryBadge}>
+                <Text style={styles.category}>{item.category || 'Inne'}</Text>
+              </View>
             </View>
+          </View>
 
-            {/* Przycisk ulubione */}
-            <AnimatedHeart
-              isFavorite={true}
-              onPress={() => handleToggleFavorite(item.id)}
-            />
+          {item.description && (
+            <Text style={styles.description} numberOfLines={2}>
+              {item.description}
+            </Text>
+          )}
+
+          {(item.address || item.city) && (
+            <View style={styles.addressContainer}>
+              <Ionicons name="location-outline" size={14} color="#666" />
+              <Text style={styles.address} numberOfLines={1}>
+                {formatBusinessAddress(item)}
+              </Text>
+            </View>
+          )}
+        </LinearGradient>
+      </TouchableOpacity>
+    );
+  };
+
+  if (!isLoggedIn) {
+    return (
+      <View style={styles.container}>
+        <LinearGradient colors={[Colors.gradientStart, Colors.gradientEnd]} style={styles.header}>
+          <Text style={styles.headerTitle}>Ulubione</Text>
+        </LinearGradient>
+        <View style={styles.notLoggedInContainer}>
+          <Ionicons name="heart-outline" size={80} color="#ccc" />
+          <Text style={styles.emptyTitle}>Nie jesteś zalogowany</Text>
+          <Text style={styles.emptyText}>Zaloguj się, aby zobaczyć ulubione firmy</Text>
+          <TouchableOpacity
+            style={styles.loginButton}
+            onPress={() => router.push('/(auth)/login')}
+          >
+            <Text style={styles.loginButtonText}>Zaloguj się</Text>
           </TouchableOpacity>
-        )}
-        contentContainerStyle={styles.listContent}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.accent]} />
-        }
-      />
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <LinearGradient colors={[Colors.gradientStart, Colors.gradientEnd]} style={styles.header}>
+        <Text style={styles.headerTitle}>Ulubione</Text>
+        <Text style={styles.headerSubtitle}>
+          {favoritesData.length} {favoritesData.length === 1 ? 'firma' : 'firm'}
+        </Text>
+      </LinearGradient>
+
+      {loading && favoritesData.length === 0 ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={Colors.accent} />
+          <Text style={styles.loadingText}>Ładowanie ulubionych...</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={favoritesData}
+          keyExtractor={(item) => item.slug || String(item.id)}
+          renderItem={renderBusinessCard}
+          contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={Colors.accent}
+            />
+          }
+          ListEmptyComponent={() => (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="heart-outline" size={80} color="#ccc" />
+              <Text style={styles.emptyTitle}>Brak ulubionych</Text>
+              <Text style={styles.emptyText}>
+                Dodaj firmy do ulubionych, aby szybko do nich wracać
+              </Text>
+              <TouchableOpacity
+                style={styles.exploreButton}
+                onPress={() => router.push('/(tabs)')}
+              >
+                <Text style={styles.exploreButtonText}>Przeglądaj firmy</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        />
+      )}
     </View>
   );
 }
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#f0f4f9',
   },
   header: {
-    backgroundColor: '#fff',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    paddingTop: Platform.OS === 'ios' ? 50 : 20,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
   },
   headerTitle: {
     fontSize: 28,
-    fontWeight: 'bold',
-    color: '#111',
+    fontWeight: '800',
+    color: '#fff',
     marginBottom: 4,
   },
   headerSubtitle: {
-    fontSize: 14,
-    color: '#666',
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.9)',
+    fontWeight: '500',
   },
   listContent: {
     padding: 16,
+    paddingBottom: 32,
+  },
+  cardWrapper: {
+    marginBottom: 14,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 5,
   },
   card: {
+    borderRadius: 16,
+    padding: 18,
+    position: 'relative',
+    paddingRight: 50,
+  },
+  removeButton: {
+    position: 'absolute',
+    top: 14,
+    right: 14,
+    zIndex: 10,
+    padding: 6,
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
+    borderRadius: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 8,
+    shadowRadius: 4,
     elevation: 3,
   },
-  cardIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#f0f4ff',
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  iconContainer: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: 14,
   },
-  cardContent: {
+  cardInfo: {
     flex: 1,
   },
   businessName: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 17,
+    fontWeight: '800',
     color: '#111',
-    marginBottom: 4,
+    marginBottom: 6,
   },
   categoryBadge: {
     backgroundColor: '#e0f2fe',
-    borderRadius: 6,
-    paddingVertical: 2,
-    paddingHorizontal: 8,
+    borderRadius: 8,
+    paddingVertical: 3,
+    paddingHorizontal: 10,
     alignSelf: 'flex-start',
-    marginBottom: 4,
   },
-  categoryText: {
+  category: {
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#0284c7',
     textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  businessDescription: {
+  description: {
     fontSize: 13,
-    color: '#666',
-    marginBottom: 4,
+    color: '#555',
+    marginBottom: 10,
+    lineHeight: 19,
   },
-  addressRow: {
+  addressContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 2,
+    backgroundColor: '#f9fafb',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
   },
-  addressText: {
+  address: {
     fontSize: 12,
     color: '#666',
-    marginLeft: 4,
-    flex: 1,
-  },
-  favoriteBtn: {
-    padding: 8,
+    marginLeft: 6,
+    fontWeight: '500',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f9fafb',
+    paddingVertical: 60,
   },
   loadingText: {
     marginTop: 12,
     fontSize: 14,
     color: '#666',
+    fontWeight: '500',
   },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f9fafb',
-    padding: 20,
+    paddingVertical: 60,
+    paddingHorizontal: 20,
   },
   emptyTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '800',
     color: '#111',
     marginTop: 16,
     marginBottom: 8,
@@ -371,24 +323,41 @@ const styles = StyleSheet.create({
   },
   exploreButton: {
     backgroundColor: Colors.accent,
-    paddingVertical: 12,
+    paddingVertical: 14,
     paddingHorizontal: 32,
-    borderRadius: 8,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
   exploreButtonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
-  retryButton: {
+  notLoggedInContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  loginButton: {
     backgroundColor: Colors.accent,
-    paddingVertical: 12,
+    paddingVertical: 14,
     paddingHorizontal: 32,
-    borderRadius: 8,
+    borderRadius: 12,
+    marginTop: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  retryButtonText: {
+  loginButtonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
 });

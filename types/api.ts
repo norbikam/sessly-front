@@ -1,67 +1,115 @@
+// ============ PODSTAWOWE TYPY ============
+
 export interface User {
-  id: number | string;
-  name?: string;
+  id: string;
   email: string;
-  phone?: string;
-  avatar?: string;
-  joinDate?: string;
-  totalVisits?: number;
-  favoriteSpecialists?: number;
-  points?: number;
+  username: string;
   first_name?: string;
   last_name?: string;
-  username?: string;
+  role: 'customer' | 'business_owner' | 'admin' | 'staff';
+  business?: Business;
+  avatar?: string;
+  phone?: string;
+  is_specialist?: boolean; // Dla kompatybilności wstecznej
+  favorite_business?: string[]; // Lista ID ulubionych biznesów
 }
 
 export interface Business {
-  id: string | number;
+  id: string;
   name: string;
+  slug: string;
+  category: 'hairdresser' | 'doctor' | 'beauty' | 'spa' | 'fitness' | 'other';
   description?: string;
-  address?: string;
-  phone?: string;
   email?: string;
-  slug?: string;
-  image?: string;
-  category?: string;
-  [key: string]: any;
+  phone_number?: string;
+  website_url?: string;
+  nip?: string;
+  timezone: string;
+  
+  // ✅ Adresy
+  address?: string; // Computed field dla wyświetlania
+  address_line1: string;
+  address_line2?: string;
+  city: string;
+  postal_code: string;
+  country: string;
+  
+  latitude?: number;
+  longitude?: number;
+  services_count?: number;
+  opening_hours?: BusinessOpeningHour[];
+  services?: BusinessService[];
+  created_at: string;
+  updated_at: string;
 }
 
-export interface Service {
-  id: number | string;
+export interface BusinessCategory {
+  value: string;
+  label: string;
+}
+
+export interface BusinessService {
+  id: string;
   name: string;
-  price?: number | string;
-  duration?: number | string;
   description?: string;
-  [key: string]: any;
+  duration_minutes: number;
+  buffer_minutes: number;
+  total_slot_minutes: number;
+  price_amount?: number;
+  price_currency: string;
+  is_active: boolean;
+  color?: string;
 }
 
-export interface OpeningHours {
-  [key: string]: any;
+// Alias dla kompatybilności
+export type Service = BusinessService;
+
+export interface BusinessOpeningHour {
+  day_of_week: number; // 0 = Poniedziałek, 6 = Niedziela
+  day_name: string;
+  is_closed: boolean;
+  open_time?: string; // HH:MM format
+  close_time?: string; // HH:MM format
+}
+
+export interface BusinessStaff {
+  id: string;
+  user_id?: string;
+  username: string;
+  first_name?: string;
+  last_name?: string;
+  email: string;
+  is_manager: boolean;
 }
 
 export interface Appointment {
-  id: number | string;
-  business_id?: number | string;
-  business?: string | Business;
-  service_id?: number | string;
-  service?: Service;
-  user_id?: number | string;
-  date?: string;
-  start?: string;
-  end?: string;
-  start_time?: string;
-  end_time?: string;
-  status?: 'pending' | 'confirmed' | 'cancelled' | 'completed';
+  id: string;
+  business: string; // slug
+  service: BusinessService;
+  customer_email?: string;
+  customer_first_name?: string;
+  customer_last_name?: string;
+  staff?: BusinessStaff | string;
+  status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
+  start: string; // ISO datetime
+  end: string; // ISO datetime
   notes?: string;
-  created_at?: string;
+  google_event_id?: string;
+  created_at: string;
   updated_at?: string;
-  [key: string]: any;
+  confirmed_at?: string;
 }
 
-// ============ TYPY DLA AUTORYZACJI ============
+export interface AvailabilitySlot {
+  date: string; // YYYY-MM-DD
+  service_id: string;
+  slots: string[]; // ["09:00", "09:30", ...]
+}
+
+// ============ REQUEST/RESPONSE TYPY ============
 
 export interface LoginRequest {
-  email: string;
+  username: string; // ✅ Backend używa username, nie email
   password: string;
 }
 
@@ -79,4 +127,86 @@ export interface RegisterRequest {
   first_name?: string;
   last_name?: string;
   phone?: string;
+}
+
+export interface ChangePasswordRequest {
+  old_password: string;
+  new_password: string;
+}
+
+export interface VerifyEmailRequest {
+  code: string;
+}
+
+export interface CreateAppointmentRequest {
+  service_id: string;
+  date: string; // YYYY-MM-DD
+  start_time: string; // HH:MM
+  notes?: string;
+}
+
+export interface CreateBusinessRequest {
+  name: string;
+  slug: string;
+  category: Business['category'];
+  description?: string;
+  email?: string;
+  phone_number?: string;
+  website_url?: string;
+  address_line1: string;
+  address_line2?: string;
+  city: string;
+  postal_code: string;
+  country?: string;
+  timezone?: string;
+  latitude?: number;
+  longitude?: number;
+}
+
+export interface UpdateBusinessRequest extends Partial<CreateBusinessRequest> {}
+
+export interface CreateServiceRequest {
+  name: string;
+  description?: string;
+  duration_minutes: number;
+  buffer_minutes?: number;
+  price_amount?: number;
+  price_currency?: string;
+  is_active?: boolean;
+  color?: string;
+}
+
+export interface UpdateServiceRequest extends Partial<CreateServiceRequest> {}
+
+export interface CreateOpeningHourRequest {
+  day_of_week: number;
+  is_closed: boolean;
+  open_time?: string;
+  close_time?: string;
+}
+
+export interface UpdateOpeningHourRequest extends Partial<CreateOpeningHourRequest> {}
+
+export interface CreateStaffRequest {
+  user_id: string;
+  is_manager?: boolean;
+}
+
+export interface UpdateStaffRequest {
+  is_manager?: boolean;
+}
+
+// ============ UTILITY TYPES ============
+
+export interface PaginatedResponse<T> {
+  count: number;
+  next?: string;
+  previous?: string;
+  results: T[];
+}
+
+export interface ApiError {
+  detail?: string;
+  message?: string;
+  [key: string]: any;
 }

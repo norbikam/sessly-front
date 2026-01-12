@@ -1,24 +1,16 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 import { api } from '../api/client';
-
-export type User = {
-  id: number | string;
-  email: string;
-  username?: string;
-  first_name?: string;
-  last_name?: string;
-  is_specialist: boolean; // ✅ DODANE
-  avatar?: string;
-  phone?: string;
-};
+import { login as apiLogin, register as apiRegister, logout as apiLogout } from '../api/auth';
+import { User } from '../types/api';
 
 type Credentials = { username: string; password: string };
 type RegisterData = {
   username: string;
   email: string;
   password: string;
-  is_specialist: boolean; // ✅ DODANE
+  password2: string;
   first_name?: string;
   last_name?: string;
 };
@@ -45,9 +37,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loadStoredUser = async () => {
     try {
-      const [storedUser, accessToken] = await AsyncStorage.multiGet(['user', 'access_token']);
-      if (storedUser[1] && accessToken[1]) {
-        setUser(JSON.parse(storedUser[1]));
+      let storedUserStr: string | null = null;
+      let accessToken: string | null = null;
+
+      if (Platform.OS === 'web') {
+        storedUserStr = localStorage.getItem('user');
+        accessToken = localStorage.getItem('access_token');
+      } else {
+        const [userItem, tokenItem] = await AsyncStorage.multiGet(['user', 'access_token']);
+        storedUserStr = userItem[1];
+        accessToken = tokenItem[1];
+      }
+
+      if (storedUserStr && accessToken) {
+        setUser(JSON.parse(storedUserStr));
       }
     } catch (error) {
       console.error('Failed to load stored user:', error);
@@ -58,48 +61,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (credentials: Credentials) => {
     try {
-      const response = await api.post('/users/login/', credentials);
-      const { user: userData, access, refresh } = response.data;
-
-      await AsyncStorage.multiSet([
-        ['access_token', access],
-        ['refresh_token', refresh],
-        ['user', JSON.stringify(userData)],
-      ]);
+      const response = await apiLogin(credentials);
+      
+      // Zapisz dane użytkownika i tokeny
+      const userData = response.user;
+      
+      if (Platform.OS === 'web') {
+        localStorage.setItem('user', JSON.stringify(userData));
+        // Tokeny są już zapisane przez apiLogin w storage.ts
+      } else {
+        await AsyncStorage.setItem('user', JSON.stringify(userData));
+      }
 
       setUser(userData);
     } catch (error: any) {
-      throw new Error(error?.response?.data?.detail || 'Błąd logowania');
+      console.error('❌ [AuthContext] Login error:', error);
+      throw error;
     }
   };
 
   const register = async (data: RegisterData): Promise<{ success: boolean; error?: string }> => {
     try {
-      const response = await api.post('/users/register/', data);
-      const { user: userData, access, refresh } = response.data;
+      const response = await apiRegister(data);
+      const userData = response.user;
 
-      await AsyncStorage.multiSet([
-        ['access_token', access],
-        ['refresh_token', refresh],
-        ['user', JSON.stringify(userData)],
-      ]);
+      if (Platform.OS === 'web') {
+        localStorage.setItem('user', JSON.stringify(userData));
+      } else {
+        await AsyncStorage.setItem('user', JSON.stringify(userData));
+      }
 
       setUser(userData);
       return { success: true };
     } catch (error: any) {
-      const errorMsg = error?.response?.data?.detail || Object.values(error?.response?.data || {})[0] || 'Błąd rejestracji';
-      return { success: false, error: String(errorMsg) };
+      const errorMsg = error?.message || 'Błąd rejestracji';
+      return { success: false, error: errorMsg };
     }
   };
 
   const logout = async () => {
     try {
-      const refreshToken = await AsyncStorage.getItem('refresh_token');
-      if (refreshToken) {
-        await api.post('/users/logout/', { refresh: refreshToken }).catch(() => {});
-      }
+      await apiLogout();
     } finally {
-      await AsyncStorage.multiRemove(['access_token', 'refresh_token', 'user']);
+      if (Platform.OS === 'web') {
+        localStorage.removeItem('user');
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+      } else {
+        await AsyncStorage.multiRemove(['access_token', 'refresh_token', 'user']);
+      }
       setUser(null);
     }
   };
@@ -107,7 +117,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const updateUser = async (userData: Partial<User>) => {
     if (!user) return;
     const updatedUser = { ...user, ...userData };
-    await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
+    
+    if (Platform.OS === 'web') {
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+    } else {
+      await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
+    }
+    
     setUser(updatedUser);
   };
 

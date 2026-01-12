@@ -14,7 +14,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Colors from '../../constants/Colors';
-import { cancelAppointment, getUserAppointments } from '../../api/appointments';
+import { cancelAppointment, getUserAppointments, getAppointmentDetail } from '../../api/appointments';
 import type { Appointment } from '../../types/api';
 
 export default function AppointmentDetailScreen() {
@@ -43,8 +43,45 @@ export default function AppointmentDetailScreen() {
     try {
       console.log('[AppointmentDetail] Fetching appointment:', id);
       
-      // Pobierz wszystkie wizyty użytkownika
-      const appointments = await getUserAppointments();
+      // ✅ OPCJA 1: Spróbuj pobrać bezpośrednio szczegóły (jeśli endpoint istnieje)
+      try {
+        const apt = await getAppointmentDetail(String(id));
+        setAppointment(apt);
+        setLoading(false);
+        return;
+      } catch (directError) {
+        console.log('[AppointmentDetail] Direct fetch failed, trying list approach');
+      }
+      
+      // ✅ OPCJA 2: Pobierz wszystkie i znajdź w tablicy
+      const appointmentsResponse = await getUserAppointments();
+      
+      console.log('[AppointmentDetail] Response type:', typeof appointmentsResponse);
+      console.log('[AppointmentDetail] Is array:', Array.isArray(appointmentsResponse));
+      console.log('[AppointmentDetail] Response:', appointmentsResponse);
+      
+      // ✅ Normalizacja odpowiedzi
+      let appointments: Appointment[] = [];
+      
+      if (Array.isArray(appointmentsResponse)) {
+        appointments = appointmentsResponse;
+      } else if (appointmentsResponse && typeof appointmentsResponse === 'object') {
+        // Backend może zwrócić { results: [...] } lub { data: [...] }
+        const data = appointmentsResponse as any;
+        if (Array.isArray(data.results)) {
+          appointments = data.results;
+        } else if (Array.isArray(data.data)) {
+          appointments = data.data;
+        } else {
+          console.error('[AppointmentDetail] Unexpected response format:', data);
+          throw new Error('Nieprawidłowy format odpowiedzi z serwera');
+        }
+      } else {
+        console.error('[AppointmentDetail] Response is not an array or object:', appointmentsResponse);
+        throw new Error('Nieprawidłowy format odpowiedzi z serwera');
+      }
+      
+      console.log('[AppointmentDetail] Normalized appointments:', appointments.length);
       
       // Znajdź konkretną wizytę
       const apt = appointments.find((a: Appointment) => String(a.id) === String(id));
@@ -116,33 +153,40 @@ export default function AppointmentDetailScreen() {
     
     try {
       console.log('📤 [Cancel] Cancelling appointment:', appointment.id);
-      await cancelAppointment(String(appointment.id));
       
-      console.log('✅ [Cancel] Success!');
+      // ✅ Wywołaj anulowanie
+      const result = await cancelAppointment(String(appointment.id));
+      
+      console.log('✅ [Cancel] Success, result:', result);
+
+      // ✅ Zaktualizuj stan lokalny
+      if (result) {
+        setAppointment(result);
+      } else {
+        // Jeśli backend nie zwrócił obiektu, odśwież ręcznie
+        setAppointment(prev => prev ? { ...prev, status: 'cancelled' } : null);
+      }
 
       // ✅ Obsługa web i mobile
       if (Platform.OS === 'web') {
         window.alert('Wizyta została anulowana');
-        router.back();
       } else {
         Alert.alert(
           'Sukces',
           'Wizyta została anulowana',
-          [
-            { 
-              text: 'OK', 
-              onPress: () => router.back()
-            }
-          ]
+          [{ text: 'OK' }]
         );
       }
     } catch (e: any) {
       console.error('❌ [Cancel] Error:', e);
+      console.error('❌ [Cancel] Error response:', e?.response?.data);
       
       let errorMessage = 'Nie udało się anulować wizyty';
       
-      if (e?.response?.data?.detail) {
-        errorMessage = e.response.data.detail;
+      // ✅ Obsługa błędów z backendu (sprawdzaj różne formaty)
+      if (e?.response?.data) {
+        const errorData = e.response.data;
+        errorMessage = errorData.message || errorData.detail || errorData.error || errorMessage;
       } else if (e?.message) {
         errorMessage = e.message;
       }

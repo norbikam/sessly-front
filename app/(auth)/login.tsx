@@ -4,11 +4,11 @@ import {
   Text, 
   StyleSheet, 
   ScrollView, 
-  Alert, 
   KeyboardAvoidingView, 
   Platform,
   Dimensions,
   TouchableOpacity,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
@@ -17,21 +17,21 @@ import { Input } from '../../components/ui/Input';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import Colors from '../../constants/Colors';
 
 export const options = {
   headerShown: false,
 };
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 const isWeb = Platform.OS === 'web';
-const isLargeScreen = width > 768;
 
 export default function LoginScreen() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{ username?: string; password?: string }>({});
-  const [loginError, setLoginError] = useState<string>(''); // Nowe: error message
+  const [loginError, setLoginError] = useState<string>('');
   
   const { login } = useAuth();
   const router = useRouter();
@@ -57,10 +57,10 @@ export default function LoginScreen() {
     if (!validate()) return;
 
     setLoading(true);
-    setLoginError(''); // Clear previous errors
+    setLoginError('');
     
     try {
-      await login({username, password});
+      await login({ username, password });
       router.replace('/(tabs)');
     } catch (error: any) {
       console.error('❌ [Login] Error:', error);
@@ -73,7 +73,6 @@ export default function LoginScreen() {
         if (data.detail) {
           errorMessage = data.detail;
           
-          // Tłumacz typowe błędy
           if (errorMessage.toLowerCase().includes('credentials')) {
             errorMessage = 'Nieprawidłowa nazwa użytkownika lub hasło';
           } else if (errorMessage.toLowerCase().includes('inactive')) {
@@ -81,25 +80,13 @@ export default function LoginScreen() {
           } else if (errorMessage.toLowerCase().includes('email')) {
             errorMessage = 'Potwierdź swój adres email przed zalogowaniem';
           }
-        } else if (data.username) {
-          errorMessage = Array.isArray(data.username) ? data.username[0] : data.username;
-        } else if (data.password) {
-          errorMessage = Array.isArray(data.password) ? data.password[0] : data.password;
-        } else if (data.non_field_errors) {
-          errorMessage = Array.isArray(data.non_field_errors) 
-            ? data.non_field_errors[0] 
-            : data.non_field_errors;
         }
-      } else if (error?.message) {
-        errorMessage = error.message;
       }
       
-      // Show error message
       setLoginError(errorMessage);
       
-      // Also show native alert on mobile
       if (!isWeb) {
-        Alert.alert('Błąd logowania', errorMessage);
+        // Alert na mobile został usunięty - pokazujemy tylko banner
       }
     } finally {
       setLoading(false);
@@ -107,54 +94,60 @@ export default function LoginScreen() {
   };
 
   return (
-    <View style={styles.outerContainer}>
+    <View style={styles.container}>
       <StatusBar style="light" />
       
-      {/* Background Gradient */}
+      {/* Animated Background */}
       <LinearGradient
-        colors={['#FF6B35', '#FF8E53', '#F7931E']}
+        colors={[Colors.gradientStart, Colors.gradientEnd, '#FF6B35']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.backgroundGradient}
-        pointerEvents="none"
-      />
+      >
+        {/* Decorative circles */}
+        <View style={[styles.decorCircle, styles.circle1]} />
+        <View style={[styles.decorCircle, styles.circle2]} />
+        <View style={[styles.decorCircle, styles.circle3]} />
+      </LinearGradient>
 
       <KeyboardAvoidingView 
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboardView}
-        keyboardVerticalOffset={0}
-        pointerEvents="box-none"
       >
         <ScrollView 
-          contentContainerStyle={[
-            styles.scrollContent,
-            isLargeScreen && styles.scrollContentLarge
-          ]}
-          keyboardShouldPersistTaps="always"
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
-          pointerEvents="box-none"
           bounces={false}
         >
-          {/* Logo/Brand Section */}
-          <View style={styles.brandContainer}>
+          {/* Back Button */}
+          <TouchableOpacity 
+            style={styles.backButton}
+            onPress={() => router.back()}
+          >
+            <Ionicons name="arrow-back" size={24} color="#fff" />
+          </TouchableOpacity>
+
+          {/* Logo Section */}
+          <View style={styles.logoSection}>
             <View style={styles.logoCircle}>
-              <Ionicons name="calendar" size={48} color="#FF6B35" />
+              <Ionicons name="calendar" size={56} color={Colors.accent} />
             </View>
-            <Text style={styles.brandName}>Sessly</Text>
-            <Text style={styles.brandTagline}>Zarządzaj swoim czasem</Text>
+            <Text style={styles.appName}>Sessly</Text>
+            <Text style={styles.tagline}>Twój asystent rezerwacji</Text>
           </View>
 
           {/* Login Card */}
-          <View style={[styles.card, isLargeScreen && styles.cardLarge]}>
+          <View style={styles.card}>
             <View style={styles.cardHeader}>
               <Text style={styles.title}>Witaj ponownie! 👋</Text>
               <Text style={styles.subtitle}>Zaloguj się do swojego konta</Text>
             </View>
 
-            {/* Error Message Banner */}
+            {/* Error Banner */}
             {loginError ? (
               <View style={styles.errorBanner}>
-                <Ionicons name="alert-circle" size={20} color="#d32f2f" />
+                <Ionicons name="alert-circle" size={20} color="#c62828" />
                 <Text style={styles.errorBannerText}>{loginError}</Text>
               </View>
             ) : null}
@@ -167,7 +160,7 @@ export default function LoginScreen() {
                 onChangeText={(text) => {
                   setUsername(text);
                   setErrors({ ...errors, username: undefined });
-                  setLoginError(''); // Clear error on input
+                  setLoginError('');
                 }}
                 error={errors.username}
                 icon="person-outline"
@@ -182,22 +175,18 @@ export default function LoginScreen() {
                 onChangeText={(text) => {
                   setPassword(text);
                   setErrors({ ...errors, password: undefined });
-                  setLoginError(''); // Clear error on input
+                  setLoginError('');
                 }}
                 error={errors.password}
                 icon="lock-closed-outline"
                 isPassword
               />
 
-              {/* Forgot Password Link */}
               <TouchableOpacity 
                 style={styles.forgotPassword}
                 onPress={() => {
-                  // TODO: Implement forgot password
                   if (isWeb) {
                     window.alert('Funkcja odzyskiwania hasła będzie wkrótce dostępna');
-                  } else {
-                    Alert.alert('Info', 'Funkcja odzyskiwania hasła będzie wkrótce dostępna');
                   }
                 }}
               >
@@ -228,12 +217,7 @@ export default function LoginScreen() {
             </View>
           </View>
 
-          {/* Footer */}
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>
-              © 2025 Sessly. Wszystkie prawa zastrzeżone.
-            </Text>
-          </View>
+          <View style={{ height: 40 }} />
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -241,7 +225,7 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  outerContainer: {
+  container: {
     flex: 1,
     backgroundColor: '#FF6B35',
   },
@@ -252,6 +236,29 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
   },
+  decorCircle: {
+    position: 'absolute',
+    borderRadius: 1000,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  circle1: {
+    width: 300,
+    height: 300,
+    top: -100,
+    right: -100,
+  },
+  circle2: {
+    width: 200,
+    height: 200,
+    bottom: -50,
+    left: -50,
+  },
+  circle3: {
+    width: 150,
+    height: 150,
+    top: height * 0.4,
+    right: -30,
+  },
   keyboardView: {
     flex: 1,
   },
@@ -259,15 +266,20 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     padding: 20,
     paddingTop: Platform.OS === 'ios' ? 60 : 40,
+    justifyContent: 'center',
   },
-  scrollContentLarge: {
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 40,
+    marginBottom: 20,
   },
-  brandContainer: {
+  logoSection: {
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: 40,
   },
   logoCircle: {
     width: 100,
@@ -278,70 +290,68 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowRadius: 12,
+    elevation: 10,
   },
-  brandName: {
-    fontSize: 36,
-    fontWeight: 'bold',
+  appName: {
+    fontSize: 42,
+    fontWeight: '900',
     color: 'white',
     marginBottom: 8,
+    letterSpacing: 1,
     textShadowColor: 'rgba(0, 0, 0, 0.3)',
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 4,
   },
-  brandTagline: {
+  tagline: {
     fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.9)',
-    fontWeight: '500',
+    color: 'rgba(255, 255, 255, 0.95)',
+    fontWeight: '600',
   },
   card: {
     backgroundColor: 'white',
-    borderRadius: 24,
-    padding: 24,
-    width: '100%',
+    borderRadius: 28,
+    padding: 28,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 10,
-  },
-  cardLarge: {
-    maxWidth: 480,
-    width: '100%',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 12,
   },
   cardHeader: {
     marginBottom: 24,
   },
   title: {
     fontSize: 28,
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: '800',
+    color: '#1a1a1a',
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 15,
     color: '#666',
+    fontWeight: '500',
   },
   errorBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#ffebee',
     borderLeftWidth: 4,
-    borderLeftColor: '#d32f2f',
-    paddingVertical: 12,
+    borderLeftColor: '#c62828',
+    paddingVertical: 14,
     paddingHorizontal: 16,
-    borderRadius: 8,
+    borderRadius: 12,
     marginBottom: 20,
-    gap: 10,
+    gap: 12,
   },
   errorBannerText: {
     flex: 1,
     fontSize: 14,
     color: '#c62828',
-    fontWeight: '500',
+    fontWeight: '600',
+    lineHeight: 20,
   },
   form: {
     width: '100%',
@@ -349,23 +359,29 @@ const styles = StyleSheet.create({
   forgotPassword: {
     alignSelf: 'flex-end',
     marginTop: -8,
-    marginBottom: 16,
+    marginBottom: 20,
+    paddingVertical: 4,
   },
   forgotPasswordText: {
-    color: '#FF6B35',
+    color: Colors.accent,
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   loginButton: {
     marginTop: 8,
-    backgroundColor: '#FF6B35',
-    borderRadius: 12,
-    height: 52,
+    backgroundColor: Colors.accent,
+    borderRadius: 16,
+    height: 56,
+    shadowColor: Colors.accent,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
   dividerContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 24,
+    marginVertical: 28,
   },
   divider: {
     flex: 1,
@@ -376,7 +392,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     color: '#999',
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   registerContainer: {
     flexDirection: 'row',
@@ -386,19 +402,11 @@ const styles = StyleSheet.create({
   registerText: {
     color: '#666',
     fontSize: 15,
+    fontWeight: '500',
   },
   registerLink: {
-    color: '#FF6B35',
+    color: Colors.accent,
     fontSize: 15,
-    fontWeight: '700',
-  },
-  footer: {
-    marginTop: 32,
-    alignItems: 'center',
-  },
-  footerText: {
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontSize: 12,
-    textAlign: 'center',
+    fontWeight: '800',
   },
 });
