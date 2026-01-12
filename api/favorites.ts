@@ -1,6 +1,6 @@
 import { getToken } from '../utils/storage';
 
-const API_BASE_URL = 'http://192.168.1.209:8000/api';
+const API_BASE_URL = 'http://localhost8000/api';
 
 // ✅ Response z backendu dla listy ulubionych
 export interface FavoriteResponse {
