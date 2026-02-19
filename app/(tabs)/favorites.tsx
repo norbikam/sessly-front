@@ -1,33 +1,55 @@
-import React, { useCallback } from 'react';
-import {
-  View,
-  Text,
-  FlatList,
-  StyleSheet,
-  TouchableOpacity,
-  RefreshControl,
-  ActivityIndicator,
+import React, { useState } from 'react';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  FlatList, 
+  TouchableOpacity, 
   Platform,
+  Animated
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useFavorites } from '../../contexts/FavoritesContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useFavorites } from '../../contexts/FavoritesContext';
 import Colors from '../../constants/Colors';
 import type { Business } from '../../types/api';
+
+// ✨ Animowane serce (do usuwania z ulubionych z poziomu listy)
+function AnimatedHeart({ isFavorite, onPress }: { isFavorite: boolean; onPress: () => void }) {
+  const scale = useState(new Animated.Value(1))[0];
+
+  const handlePress = () => {
+    Animated.sequence([
+      Animated.timing(scale, { toValue: 1.3, duration: 150, useNativeDriver: true }),
+      Animated.spring(scale, { toValue: 1, friction: 3, useNativeDriver: true }),
+    ]).start();
+    onPress();
+  };
+
+  return (
+    <TouchableOpacity 
+      style={styles.favoriteButton}
+      onPress={handlePress}
+      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+    >
+      <Animated.View style={{ transform: [{ scale }] }}>
+        <Ionicons 
+          name={isFavorite ? "heart" : "heart-outline"} 
+          size={24} 
+          color={isFavorite ? "#FF3B5C" : "#fff"} 
+        />
+      </Animated.View>
+    </TouchableOpacity>
+  );
+}
 
 export default function FavoritesScreen() {
   const router = useRouter();
   const { isLoggedIn } = useAuth();
-  const { favoritesData, isFavorite, toggleFavorite, refreshFavorites, loading } = useFavorites();
-  const [refreshing, setRefreshing] = React.useState(false);
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await refreshFavorites();
-    setRefreshing(false);
-  }, [refreshFavorites]);
+  const { favoritesData, toggleFavorite } = useFavorites();
 
   const handleBusinessPress = (business: Business) => {
     router.push({
@@ -36,73 +58,80 @@ export default function FavoritesScreen() {
     });
   };
 
-const handleRemoveFavorite = async (business: Business) => {
-  try {
-    await toggleFavorite(business); // ✅ Przekazujemy cały obiekt
-    await refreshFavorites(); // Odśwież listę
-  } catch (error) {
-    console.error('Failed to remove favorite:', error);
-  }
-};
+  const handleRemoveFavorite = async (business: Business) => {
+    try {
+      await toggleFavorite(business);
+    } catch (error) {
+      console.error('Failed to remove favorite:', error);
+    }
+  };
 
-  const formatBusinessAddress = (business: Business): string => {
+  const formatAddress = (business: Business) => {
     if (business.address) return business.address;
     const parts = [business.address_line1, business.city].filter(Boolean);
     return parts.join(', ');
   };
 
-  const renderBusinessCard = ({ item }: { item: Business }) => {
-    const businessId = item.slug || String(item.id);
-    const favorite = isFavorite(businessId);
+  const renderFavoriteCard = ({ item }: { item: Business }) => {
+    const imageUrl = `https://picsum.photos/seed/${item.id}/600/400`; // Placeholder
+    const address = formatAddress(item);
 
     return (
-      <TouchableOpacity
+      <TouchableOpacity 
         style={styles.cardWrapper}
         onPress={() => handleBusinessPress(item)}
-        activeOpacity={0.8}
+        activeOpacity={0.9}
       >
-        <LinearGradient colors={['#ffffff', '#f8f9fa']} style={styles.card}>
-          {/* Remove Button */}
-          <TouchableOpacity
-            style={styles.removeButton}
-            onPress={() => handleRemoveFavorite(item)} // ✅ Przekazujemy item (Business)
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons name="heart" size={24} color="#e74c3c" />
-          </TouchableOpacity>
-
-          <View style={styles.cardHeader}>
+        <View style={styles.card}>
+          <View style={styles.imageContainer}>
+            <Image
+              source={{ uri: imageUrl }}
+              style={styles.businessImage}
+              contentFit="cover"
+              transition={300}
+            />
             <LinearGradient
-              colors={[Colors.gradientStart, Colors.gradientEnd]}
-              style={styles.iconContainer}
-            >
-              <Ionicons name="business" size={28} color="#fff" />
-            </LinearGradient>
-            <View style={styles.cardInfo}>
-              <Text style={styles.businessName} numberOfLines={1}>
-                {item.name}
-              </Text>
-              <View style={styles.categoryBadge}>
-                <Text style={styles.category}>{item.category || 'Inne'}</Text>
-              </View>
+              colors={['transparent', 'rgba(0,0,0,0.8)']}
+              style={styles.imageGradient}
+            />
+            
+            <View style={styles.favoriteContainer}>
+              <AnimatedHeart 
+                isFavorite={true} 
+                onPress={() => handleRemoveFavorite(item)} 
+              />
+            </View>
+
+            <View style={styles.categoryBadge}>
+              <LinearGradient
+                colors={['rgba(255,255,255,0.95)', 'rgba(255,255,255,0.8)']}
+                style={styles.categoryGradient}
+              >
+                <Text style={styles.categoryText}>{item.category || 'Usługi'}</Text>
+              </LinearGradient>
             </View>
           </View>
-
-          {item.description && (
-            <Text style={styles.description} numberOfLines={2}>
-              {item.description}
-            </Text>
-          )}
-
-          {(item.address || item.city) && (
-            <View style={styles.addressContainer}>
-              <Ionicons name="location-outline" size={14} color="#666" />
-              <Text style={styles.address} numberOfLines={1}>
-                {formatBusinessAddress(item)}
-              </Text>
+          
+          <View style={styles.cardContent}>
+            <Text style={styles.businessName} numberOfLines={1}>{item.name}</Text>
+            
+            <View style={styles.metaRow}>
+              {address ? (
+                <View style={styles.metaItem}>
+                  <Ionicons name="location" size={14} color={Colors.accent} />
+                  <Text style={styles.metaText} numberOfLines={1}>{address}</Text>
+                </View>
+              ) : null}
+              
+              {item.services_count ? (
+                <View style={styles.metaItem}>
+                  <Ionicons name="cut" size={14} color={Colors.accent} />
+                  <Text style={styles.metaText}>{item.services_count} usług</Text>
+                </View>
+              ) : null}
             </View>
-          )}
-        </LinearGradient>
+          </View>
+        </View>
       </TouchableOpacity>
     );
   };
@@ -110,18 +139,19 @@ const handleRemoveFavorite = async (business: Business) => {
   if (!isLoggedIn) {
     return (
       <View style={styles.container}>
-        <LinearGradient colors={[Colors.gradientStart, Colors.gradientEnd]} style={styles.header}>
-          <Text style={styles.headerTitle}>Ulubione</Text>
-        </LinearGradient>
         <View style={styles.notLoggedInContainer}>
-          <Ionicons name="heart-outline" size={80} color="#ccc" />
-          <Text style={styles.emptyTitle}>Nie jesteś zalogowany</Text>
-          <Text style={styles.emptyText}>Zaloguj się, aby zobaczyć ulubione firmy</Text>
-          <TouchableOpacity
-            style={styles.loginButton}
+          <View style={styles.iconCircle}>
+            <Ionicons name="heart" size={50} color="#8B7AB8" />
+          </View>
+          <Text style={styles.emptyTitle}>Ulubione miejsca</Text>
+          <Text style={styles.emptySubtitle}>
+            Zaloguj się, aby zapisywać swoje ulubione salony i mieć do nich szybki dostęp.
+          </Text>
+          <TouchableOpacity 
+            style={styles.actionButton} 
             onPress={() => router.push('/(auth)/login')}
           >
-            <Text style={styles.loginButtonText}>Zaloguj się</Text>
+            <Text style={styles.actionButtonText}>Zaloguj się</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -130,48 +160,38 @@ const handleRemoveFavorite = async (business: Business) => {
 
   return (
     <View style={styles.container}>
-      <LinearGradient colors={[Colors.gradientStart, Colors.gradientEnd]} style={styles.header}>
+      <View style={styles.header}>
         <Text style={styles.headerTitle}>Ulubione</Text>
         <Text style={styles.headerSubtitle}>
-          {favoritesData.length} {favoritesData.length === 1 ? 'firma' : 'firm'}
+          {favoritesData.length} {favoritesData.length === 1 ? 'zapisane miejsce' : 'zapisanych miejsc'}
         </Text>
-      </LinearGradient>
+      </View>
 
-      {loading && favoritesData.length === 0 ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Colors.accent} />
-          <Text style={styles.loadingText}>Ładowanie ulubionych...</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={favoritesData}
-          keyExtractor={(item) => item.slug || String(item.id)}
-          renderItem={renderBusinessCard}
-          contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={Colors.accent}
-            />
-          }
-          ListEmptyComponent={() => (
-            <View style={styles.emptyContainer}>
-              <Ionicons name="heart-outline" size={80} color="#ccc" />
-              <Text style={styles.emptyTitle}>Brak ulubionych</Text>
-              <Text style={styles.emptyText}>
-                Dodaj firmy do ulubionych, aby szybko do nich wracać
-              </Text>
-              <TouchableOpacity
-                style={styles.exploreButton}
-                onPress={() => router.push('/(tabs)')}
-              >
-                <Text style={styles.exploreButtonText}>Przeglądaj firmy</Text>
-              </TouchableOpacity>
+      <FlatList
+        data={favoritesData}
+        keyExtractor={(item) => String(item.id)}
+        renderItem={renderFavoriteCard}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        ListEmptyComponent={() => (
+          <View style={styles.emptyContainer}>
+            <View style={styles.emptyIconCircle}>
+              <Ionicons name="heart-dislike-outline" size={60} color="#ccc" />
             </View>
-          )}
-        />
-      )}
+            <Text style={styles.emptyTitle}>Brak ulubionych</Text>
+            <Text style={styles.emptySubtitle}>
+              Nie dodałeś jeszcze żadnego miejsca do ulubionych. Odkryj najlepsze salony w okolicy!
+            </Text>
+            <TouchableOpacity 
+              style={styles.actionButton} 
+              onPress={() => router.push('/(tabs)')}
+            >
+              <Ionicons name="search" size={18} color="#fff" style={{ marginRight: 8 }} />
+              <Text style={styles.actionButtonText}>Przeglądaj firmy</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      />
     </View>
   );
 }
@@ -179,127 +199,127 @@ const handleRemoveFavorite = async (business: Business) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f0f4f9',
+    backgroundColor: '#FAF8FF',
   },
   header: {
-    paddingTop: Platform.OS === 'ios' ? 50 : 20,
-    paddingBottom: 20,
     paddingHorizontal: 20,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+    paddingTop: Platform.OS === 'ios' ? 60 : 40,
+    paddingBottom: 20,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5DFF5',
   },
   headerTitle: {
     fontSize: 28,
-    fontWeight: '800',
-    color: '#fff',
-    marginBottom: 4,
+    fontWeight: '900',
+    color: '#1a1a1a',
+    letterSpacing: 0.5,
   },
   headerSubtitle: {
     fontSize: 15,
-    color: 'rgba(255,255,255,0.9)',
-    fontWeight: '500',
+    color: '#666',
+    fontWeight: '600',
+    marginTop: 4,
   },
   listContent: {
     padding: 16,
-    paddingBottom: 32,
+    paddingBottom: 40,
+    flexGrow: 1,
   },
   cardWrapper: {
-    marginBottom: 14,
-    borderRadius: 16,
+    marginBottom: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
+    shadowOpacity: 0.1,
     shadowRadius: 12,
-    elevation: 5,
+    elevation: 6,
   },
   card: {
-    borderRadius: 16,
-    padding: 18,
-    position: 'relative',
-    paddingRight: 50,
-  },
-  removeButton: {
-    position: 'absolute',
-    top: 14,
-    right: 14,
-    zIndex: 10,
-    padding: 6,
     backgroundColor: '#fff',
     borderRadius: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    overflow: 'hidden',
   },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
+  imageContainer: {
+    width: '100%',
+    height: 180,
+    position: 'relative',
   },
-  iconContainer: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    alignItems: 'center',
+  businessImage: {
+    width: '100%',
+    height: '100%',
+  },
+  imageGradient: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 90,
+  },
+  favoriteContainer: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    zIndex: 2,
+  },
+  favoriteButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
-    marginRight: 14,
-  },
-  cardInfo: {
-    flex: 1,
-  },
-  businessName: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#111',
-    marginBottom: 6,
+    alignItems: 'center',
   },
   categoryBadge: {
-    backgroundColor: '#e0f2fe',
-    borderRadius: 8,
-    paddingVertical: 3,
-    paddingHorizontal: 10,
-    alignSelf: 'flex-start',
+    position: 'absolute',
+    bottom: 12,
+    left: 12,
+    borderRadius: 12,
+    overflow: 'hidden',
   },
-  category: {
+  categoryGradient: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  categoryText: {
     fontSize: 11,
-    fontWeight: '700',
-    color: '#0284c7',
+    fontWeight: '800',
+    color: '#333',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
-  description: {
-    fontSize: 13,
-    color: '#555',
+  cardContent: {
+    padding: 16,
+  },
+  businessName: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#1a1a1a',
     marginBottom: 10,
-    lineHeight: 19,
   },
-  addressContainer: {
+  metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f9fafb',
-    paddingVertical: 6,
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  metaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F5F3FF',
     paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 8,
-    alignSelf: 'flex-start',
+    gap: 6,
   },
-  address: {
-    fontSize: 12,
-    color: '#666',
-    marginLeft: 6,
-    fontWeight: '500',
+  metaText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#555',
   },
-  loadingContainer: {
+  notLoggedInContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 60,
-  },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 14,
-    color: '#666',
-    fontWeight: '500',
+    padding: 30,
   },
   emptyContainer: {
     flex: 1,
@@ -308,56 +328,59 @@ const styles = StyleSheet.create({
     paddingVertical: 60,
     paddingHorizontal: 20,
   },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#111',
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  emptyText: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  exploreButton: {
-    backgroundColor: Colors.accent,
-    paddingVertical: 14,
-    paddingHorizontal: 32,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  exploreButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  notLoggedInContainer: {
-    flex: 1,
+  iconCircle: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#F5F3FF',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    marginBottom: 24,
   },
-  loginButton: {
-    backgroundColor: Colors.accent,
-    paddingVertical: 14,
-    paddingHorizontal: 32,
-    borderRadius: 12,
-    marginTop: 24,
+  emptyIconCircle: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  emptyTitle: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#1a1a1a',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontSize: 15,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 30,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    backgroundColor: '#8B7AB8',
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    shadowColor: '#8B7AB8',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 4,
   },
-  loginButtonText: {
+  actionButtonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
   },
 });

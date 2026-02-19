@@ -1,5 +1,5 @@
 import apiClient from './client';
-import { Business, Service } from '../types/api';
+import { Appointment, Business, Service } from '../types/api';
 
 // --- ISTNIEJĄCE FUNKCJE (ODCZYT) ---
 
@@ -163,5 +163,35 @@ export const createBusiness = async (data: CreateBusinessData): Promise<Business
  */
 export const getMyBusiness = async (): Promise<Business> => {
   const response = await apiClient.get<Business>('/businesses/my-business/');
+  return response.data;
+};
+
+// --- ✅ ZARZĄDZANIE REZERWACJAMI (WŁAŚCICIEL) ---
+
+/**
+ * Pobiera rezerwacje dla konkretnego biznesu (wymaga slug)
+ */
+export const getBusinessAppointments = async (slug: string): Promise<Appointment[]> => {
+  const response = await apiClient.get(`/businesses/${slug}/appointments/`);
+  // Zabezpieczenie przed paginacją (jeśli backend zwraca { results: [...] })
+  if (response.data && Array.isArray((response.data as any).results)) {
+    return (response.data as any).results;
+  }
+  return response.data || [];
+};
+
+/**
+ * Potwierdza rezerwację klienta
+ */
+export const confirmAppointmentByOwner = async (slug: string, appointmentId: string) => {
+  const response = await apiClient.post(`/businesses/${slug}/appointments/${appointmentId}/confirm/`);
+  return response.data;
+};
+
+/**
+ * Anuluje/odrzuca rezerwację klienta
+ */
+export const cancelAppointmentByOwner = async (slug: string, appointmentId: string) => {
+  const response = await apiClient.post(`/businesses/${slug}/appointments/${appointmentId}/cancel/`);
   return response.data;
 };
