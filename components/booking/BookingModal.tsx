@@ -10,9 +10,20 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Calendar, LocaleConfig } from 'react-native-calendars';
 import Colors from '../../constants/Colors';
 import { getAvailability } from '../../api/appointments';
 import type { Service, Business } from '../../types/api';
+
+// Konfiguracja języka polskiego dla kalendarza
+LocaleConfig.locales['pl'] = {
+  monthNames: ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec','Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień'],
+  monthNamesShort: ['Sty','Lut','Mar','Kwi','Maj','Cze','Lip','Sie','Wrz','Paź','Lis','Gru'],
+  dayNames: ['Niedziela','Poniedziałek','Wtorek','Środa','Czwartek','Piątek','Sobota'],
+  dayNamesShort: ['Nie','Pon','Wt','Śr','Czw','Pt','Sob'],
+  today: 'Dzisiaj'
+};
+LocaleConfig.defaultLocale = 'pl';
 
 interface BookingModalProps {
   visible: boolean;
@@ -33,34 +44,17 @@ const BookingModal: React.FC<BookingModalProps> = ({
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
-  const [availableDates, setAvailableDates] = useState<string[]>([]);
 
-  // Generate next 30 days
-  const generateDates = () => {
-    const dates: string[] = [];
-    const today = new Date();
-    
-    for (let i = 0; i < 30; i++) {
-      const date = new Date(today);
-      date.setDate(today.getDate() + i);
-      dates.push(date.toISOString().split('T')[0]);
-    }
-    
-    return dates;
-  };
-
+  // Zresetuj stan przy otwarciu
   useEffect(() => {
     if (visible) {
-      console.log('🔵 [BookingModal] Modal opened');
       setSelectedDate(null);
       setSelectedTime(null);
       setAvailableSlots([]);
-      const dates = generateDates();
-      setAvailableDates(dates);
-      console.log('✅ [BookingModal] Generated dates:', dates.slice(0, 3), '...');
     }
   }, [visible]);
 
+  // Pobieranie dostępności gdy wybierzemy datę
   useEffect(() => {
     if (selectedDate && business.slug) {
       fetchAvailability(selectedDate);
@@ -73,37 +67,24 @@ const BookingModal: React.FC<BookingModalProps> = ({
     setSelectedTime(null);
 
     try {
-      console.log('📤 [BookingModal] Fetching availability:', {
-        slug: business.slug,
-        serviceId: String(service.id),
-        date,
-      });
-
       const availability = await getAvailability(
         business.slug!,
         String(service.id),
         date
       );
 
-      console.log('✅ [BookingModal] Raw response:', availability);
-
-      // ✅ FIX: Backend zwraca array stringów, NIE obiektów!
       let slots: string[] = [];
+      // Rzutowanie na any[], żeby ominąć błąd TS o typie `never`
+      const rawSlots = availability.slots as any[];
       
-      if (Array.isArray(availability.slots)) {
-        // Check if slots are strings or objects
-        if (typeof availability.slots[0] === 'string') {
-          // Backend zwraca: ["09:00", "10:15", ...]
-          slots = availability.slots as unknown as string[];
-          console.log('✅ [BookingModal] Slots are strings:', slots);
-        } else if (availability.slots[0]?.time) {
-          // Backend zwraca: [{time: "09:00"}, {time: "10:15"}, ...]
-          slots = availability.slots.map((slot: any) => slot.time);
-          console.log('✅ [BookingModal] Slots are objects:', slots);
+      if (Array.isArray(rawSlots) && rawSlots.length > 0) {
+        if (typeof rawSlots[0] === 'string') {
+          slots = rawSlots as string[];
+        } else if (rawSlots[0]?.time) {
+          slots = rawSlots.map((slot: any) => slot.time);
         }
       }
       
-      console.log('✅ [BookingModal] Final slots:', slots);
       setAvailableSlots(slots);
     } catch (error: any) {
       console.error('❌ [BookingModal] Error:', error);
@@ -113,20 +94,8 @@ const BookingModal: React.FC<BookingModalProps> = ({
     }
   };
 
-  const handleDateSelect = (date: string) => {
-    console.log('🔵 [BookingModal] Date selected:', date);
-    setSelectedDate(date);
-    setSelectedTime(null);
-  };
-
-  const handleTimeSelect = (time: string) => {
-    console.log('🔵 [BookingModal] Time selected:', time);
-    setSelectedTime(time);
-  };
-
   const handleConfirm = () => {
     if (selectedDate && selectedTime) {
-      console.log('✅ [BookingModal] Confirming:', { date: selectedDate, time: selectedTime });
       onConfirm(selectedDate, selectedTime);
       onClose();
     }
@@ -139,28 +108,8 @@ const BookingModal: React.FC<BookingModalProps> = ({
     onClose();
   };
 
-  const formatDateDisplay = (dateString: string) => {
-    const date = new Date(dateString + 'T00:00:00');
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-
-    const targetDate = new Date(dateString + 'T00:00:00');
-    targetDate.setHours(0, 0, 0, 0);
-
-    if (targetDate.getTime() === today.getTime()) {
-      return 'Dzisiaj';
-    } else if (targetDate.getTime() === tomorrow.getTime()) {
-      return 'Jutro';
-    }
-
-    const dayNames = ['Nie', 'Pon', 'Wt', 'Śr', 'Czw', 'Pt', 'Sob'];
-    const monthNames = ['Sty', 'Lut', 'Mar', 'Kwi', 'Maj', 'Cze', 'Lip', 'Sie', 'Wrz', 'Paź', 'Lis', 'Gru'];
-    
-    return `${dayNames[date.getDay()]} ${date.getDate()} ${monthNames[date.getMonth()]}`;
-  };
+  // Ustawienie dzisiejszej daty, żeby zablokować kalendarz przed dzisiejszym dniem
+  const today = new Date().toISOString().split('T')[0];
 
   return (
     <Modal
@@ -189,59 +138,54 @@ const BookingModal: React.FC<BookingModalProps> = ({
               <View style={styles.metaItem}>
                 <Ionicons name="time-outline" size={16} color="#666" />
                 <Text style={styles.metaText}>
-                  {(service as any).duration_minutes || service.duration} min
+                  {service.duration_minutes} min
                 </Text>
               </View>
               <View style={styles.metaItem}>
                 <Ionicons name="cash-outline" size={16} color="#666" />
                 <Text style={styles.metaText}>
-                  {(service as any).price_amount || service.price} PLN
+                  {service.price_amount !== undefined ? service.price_amount : '-'} PLN
                 </Text>
               </View>
             </View>
           </View>
 
           <ScrollView style={styles.content} showsVerticalScrollIndicator={true}>
-            {/* Date Selection */}
-            <View style={styles.section}>
+            {/* Kalendarz */}
+            <View style={styles.calendarSection}>
               <Text style={styles.sectionTitle}>1. Wybierz dzień</Text>
-              <Text style={styles.helperText}>Przesuń w prawo aby zobaczyć więcej dni →</Text>
-              <ScrollView 
-                horizontal 
-                showsHorizontalScrollIndicator={true}
-                contentContainerStyle={styles.datesScroll}
-                style={styles.datesScrollContainer}
-              >
-                {availableDates.map((date, idx) => {
-                  const isSelected = selectedDate === date;
-                  const isToday = date === new Date().toISOString().split('T')[0];
-                  
-                  return (
-                    <TouchableOpacity
-                      key={`date-${idx}`}
-                      style={[
-                        styles.dateButton,
-                        isSelected && styles.dateButtonSelected,
-                        isToday && !isSelected && styles.dateButtonToday,
-                      ]}
-                      onPress={() => handleDateSelect(date)}
-                    >
-                      <Text style={[
-                        styles.dateButtonText,
-                        isSelected && styles.dateButtonTextSelected,
-                      ]}>
-                        {formatDateDisplay(date)}
-                      </Text>
-                      <Text style={[
-                        styles.dateButtonSubtext,
-                        isSelected && styles.dateButtonTextSelected,
-                      ]}>
-                        {date.slice(5)}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
+              
+              <View style={styles.calendarWrapper}>
+                <Calendar
+                  current={selectedDate || today}
+                  minDate={today}
+                  onDayPress={(day: any) => {
+                    setSelectedDate(day.dateString);
+                    setSelectedTime(null);
+                  }}
+                  markedDates={{
+                    [selectedDate || '']: { selected: true, selectedColor: Colors.accent },
+                  }}
+                  theme={{
+                    backgroundColor: '#ffffff',
+                    calendarBackground: '#ffffff',
+                    textSectionTitleColor: '#b6c1cd',
+                    selectedDayBackgroundColor: Colors.accent,
+                    selectedDayTextColor: '#ffffff',
+                    todayTextColor: Colors.accent,
+                    dayTextColor: '#2d4150',
+                    textDisabledColor: '#d9e1e8',
+                    arrowColor: Colors.accent,
+                    monthTextColor: Colors.accent,
+                    textDayFontWeight: '500',
+                    textMonthFontWeight: 'bold',
+                    textDayHeaderFontWeight: '500',
+                    textDayFontSize: 14,
+                    textMonthFontSize: 16,
+                    textDayHeaderFontSize: 13
+                  }}
+                />
+              </View>
             </View>
 
             {/* Time Slots */}
@@ -250,18 +194,16 @@ const BookingModal: React.FC<BookingModalProps> = ({
                 <Text style={styles.sectionTitle}>
                   2. Wybierz godzinę
                 </Text>
-                <Text style={styles.helperText}>Wybrana data: {selectedDate}</Text>
-
+                
                 {loading ? (
                   <View style={styles.loadingContainer}>
                     <ActivityIndicator size="large" color={Colors.accent} />
-                    <Text style={styles.loadingText}>Sprawdzam dostępność...</Text>
+                    <Text style={styles.loadingText}>Szukanie wolnych terminów...</Text>
                   </View>
                 ) : availableSlots.length > 0 ? (
                   <View style={styles.slotsGrid}>
                     {availableSlots.map((slot, idx) => {
                       const isSelected = selectedTime === slot;
-                      
                       return (
                         <TouchableOpacity
                           key={`time-${idx}-${slot}`}
@@ -269,7 +211,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
                             styles.slotButton,
                             isSelected && styles.slotButtonSelected,
                           ]}
-                          onPress={() => handleTimeSelect(slot)}
+                          onPress={() => setSelectedTime(slot)}
                         >
                           <Ionicons
                             name="time-outline"
@@ -291,12 +233,13 @@ const BookingModal: React.FC<BookingModalProps> = ({
                 ) : (
                   <View style={styles.emptyState}>
                     <Ionicons name="calendar-outline" size={48} color="#ccc" />
-                    <Text style={styles.emptyText}>Brak dostępnych terminów</Text>
-                    <Text style={styles.emptySubtext}>Wybierz inny dzień</Text>
+                    <Text style={styles.emptyText}>Brak wolnych miejsc w tym dniu</Text>
+                    <Text style={styles.emptySubtext}>Wybierz inną datę z kalendarza</Text>
                   </View>
                 )}
               </View>
             )}
+            <View style={{height: 40}} />
           </ScrollView>
 
           {/* Footer */}
@@ -393,6 +336,17 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
+  calendarSection: {
+    padding: 16,
+    paddingBottom: 0,
+  },
+  calendarWrapper: {
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginTop: 8,
+  },
   section: {
     padding: 16,
   },
@@ -400,51 +354,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#333',
-    marginBottom: 4,
-  },
-  helperText: {
-    fontSize: 12,
-    color: '#999',
-    marginBottom: 12,
-  },
-  datesScrollContainer: {
-    maxHeight: 100,
-  },
-  datesScroll: {
-    gap: 8,
-    paddingVertical: 4,
-    paddingHorizontal: 2,
-  },
-  dateButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: 1.5,
-    borderColor: '#E0E0E0',
-    backgroundColor: '#fff',
-    minWidth: 90,
-    alignItems: 'center',
-  },
-  dateButtonToday: {
-    borderColor: Colors.accent,
-    backgroundColor: '#FFF5F0',
-  },
-  dateButtonSelected: {
-    backgroundColor: Colors.accent,
-    borderColor: Colors.accent,
-  },
-  dateButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-  },
-  dateButtonSubtext: {
-    fontSize: 11,
-    color: '#999',
-    marginTop: 2,
-  },
-  dateButtonTextSelected: {
-    color: '#fff',
+    marginBottom: 8,
   },
   loadingContainer: {
     padding: 40,
@@ -459,7 +369,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
-    marginTop: 8,
   },
   slotButton: {
     flexDirection: 'row',
@@ -487,8 +396,10 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   emptyState: {
-    padding: 40,
+    padding: 30,
     alignItems: 'center',
+    backgroundColor: '#F9F9F9',
+    borderRadius: 12,
   },
   emptyText: {
     fontSize: 16,

@@ -15,14 +15,11 @@ import {
   Dimensions,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router'; // <--- DODANO useFocusEffect
 import { useAuth } from '../../contexts/AuthContext';
 import { useFavorites } from '../../contexts/FavoritesContext';
-import { 
-  searchBusinesses, 
-  getBusinessCategories,
-  type BusinessCategory 
-} from '../../api/business';
+import { searchBusinesses, getBusinessCategories, type BusinessCategory } from '../../api/business';
+import { getUserAppointments } from '../../api/appointments'; // <--- DODANO import API wizyt
 import { Business } from '../../types/api';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -42,7 +39,6 @@ const SORT_OPTIONS = [
   { value: 'newest', label: 'Najnowsze', icon: 'sparkles-outline' },
 ];
 
-// ✅ Debounce hook
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
 
@@ -56,7 +52,13 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
-// ✨ Enhanced Skeleton Loader
+// Funkcja pomocnicza do poprawnej odmiany słowa "wizyta"
+const getAppointmentsLabel = (count: number) => {
+  if (count === 1) return 'wizyta';
+  if (count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 10 || count % 100 >= 20)) return 'wizyty';
+  return 'wizyt';
+};
+
 function SkeletonCard() {
   const shimmerAnim = useState(new Animated.Value(0))[0];
 
@@ -75,7 +77,7 @@ function SkeletonCard() {
         }),
       ])
     ).start();
-  }, []);
+  }, [shimmerAnim]);
 
   const opacity = shimmerAnim.interpolate({
     inputRange: [0, 1],
@@ -97,13 +99,11 @@ function SkeletonCard() {
   );
 }
 
-// ✨ Animated Heart Component
 function AnimatedHeart({ isFavorite, onPress }: { isFavorite: boolean; onPress: () => void }) {
   const scale = useState(new Animated.Value(1))[0];
   const rotation = useState(new Animated.Value(0))[0];
 
   const handlePress = () => {
-    // Animacja pulsowania i obrotu
     Animated.parallel([
       Animated.sequence([
         Animated.timing(scale, {
@@ -157,7 +157,6 @@ function AnimatedHeart({ isFavorite, onPress }: { isFavorite: boolean; onPress: 
   );
 }
 
-// ✨ Sort Modal
 function SortModal({ 
   visible, 
   onClose, 
@@ -240,18 +239,19 @@ export default function HomeScreen() {
   
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [categories, setCategories] = useState<BusinessCategory[]>([]);
+  const [upcomingAppointments, setUpcomingAppointments] = useState<number>(0); // <--- DODANY STAN
+  
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [sortBy, setSortBy] = useState<SortOption>('name-asc');
   const [showSortModal, setShowSortModal] = useState(false);
   
   const debouncedSearch = useDebounce(searchQuery, 500);
 
-  // Load sort preference
   useEffect(() => {
     const loadSortPreference = async () => {
       try {
@@ -272,7 +272,6 @@ export default function HomeScreen() {
     }
   };
 
-  // Load categories
   useEffect(() => {
     const loadCategories = async () => {
       try {
@@ -285,15 +284,10 @@ export default function HomeScreen() {
     loadCategories();
   }, []);
 
-  // Load businesses
-  useEffect(() => {
-    loadBusinesses();
-  }, [debouncedSearch, selectedCategory]);
-
-  const loadBusinesses = async () => {
+  const loadBusinesses = useCallback(async () => {
     setSearching(true);
     try {
-      const data = await searchBusinesses(debouncedSearch, selectedCategory);
+      const data = await searchBusinesses(debouncedSearch, selectedCategory === 'all' ? '' : selectedCategory);
       setBusinesses(data);
     } catch (error) {
       console.error('Failed to load businesses:', error);
@@ -301,11 +295,41 @@ export default function HomeScreen() {
       setSearching(false);
       setLoading(false);
     }
-  };
+  }, [debouncedSearch, selectedCategory]);
+
+  useEffect(() => {
+    loadBusinesses();
+  }, [loadBusinesses]);
+
+  // ✅ DODANO: Pobieranie liczby nadchodzących wizyt
+  const loadUpcomingAppointments = useCallback(async () => {
+    if (!isLoggedIn) return;
+    try {
+      const data = await getUserAppointments();
+      const now = new Date();
+      // Filtrujemy tylko te, które są z datą przyszłą i nie są anulowane
+      const upcoming = data.filter((apt) => {
+        if (!apt.start || !apt.status) return false;
+        const startDate = new Date(apt.start);
+        return startDate > now && apt.status !== 'cancelled';
+      });
+      setUpcomingAppointments(upcoming.length);
+    } catch (error) {
+      console.error('Failed to load upcoming appointments:', error);
+    }
+  }, [isLoggedIn]);
+
+  // ✅ DODANO: useFocusEffect - odświeża statystyki przy każdym wejściu na ten ekran
+  useFocusEffect(
+    useCallback(() => {
+      loadUpcomingAppointments();
+    }, [loadUpcomingAppointments])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadBusinesses();
+    // Odświeżamy zarówno firmy jak i wizyty
+    await Promise.all([loadBusinesses(), loadUpcomingAppointments()]);
     setRefreshing(false);
   };
 
@@ -316,7 +340,6 @@ export default function HomeScreen() {
     });
   };
 
-  // ✅ POPRAWIONE: Obsługa ulubionych - przekazuje cały obiekt Business
   const handleFavoritePress = async (business: Business) => {
     if (!isLoggedIn) {
       Alert.alert(
@@ -334,7 +357,7 @@ export default function HomeScreen() {
     }
     
     try {
-      await toggleFavorite(business); // ✅ Przekazuje cały obiekt Business
+      await toggleFavorite(business);
     } catch (error: any) {
       console.error('❌ Toggle favorite failed:', error);
       Alert.alert('Błąd', 'Nie udało się zmienić statusu ulubionej');
@@ -354,7 +377,6 @@ export default function HomeScreen() {
     setSearchQuery(text);
   }, []);
 
-  // Sort businesses
   const sortedBusinesses = useMemo(() => {
     if (!Array.isArray(businesses)) return [];
     
@@ -375,20 +397,16 @@ export default function HomeScreen() {
     return sorted;
   }, [businesses, sortBy]);
 
-  // ✅ Format business address
   const formatBusinessAddress = (business: Business): string => {
     if (business.address) return business.address;
     const parts = [business.address_line1, business.city].filter(Boolean);
     return parts.join(', ');
   };
 
-  // ✨ Enhanced Business Card with Image
   const renderBusinessCard = ({ item }: { item: Business }) => {
     const businessId = String(item.id);
     const favorite = isFavorite(businessId);
     const categoryDisplay = item.category || 'Inne';
-    
-    // Mock image URL - zamień na rzeczywisty URL z API gdy będzie dostępny
     const imageUrl = `https://picsum.photos/seed/${item.id}/600/400`;
     const address = formatBusinessAddress(item);
 
@@ -399,7 +417,6 @@ export default function HomeScreen() {
         activeOpacity={0.95}
       >
         <View style={styles.card}>
-          {/* ✨ Image Section with Gradient Overlay */}
           <View style={styles.imageContainer}>
             <Image
               source={{ uri: imageUrl }}
@@ -408,13 +425,11 @@ export default function HomeScreen() {
               transition={300}
             />
             
-            {/* Gradient overlay */}
             <LinearGradient
               colors={['transparent', 'rgba(0,0,0,0.7)']}
               style={styles.imageGradient}
             />
             
-            {/* ✨ Favorite Button on Image */}
             <View style={styles.favoriteContainer}>
               <AnimatedHeart 
                 isFavorite={favorite} 
@@ -422,7 +437,6 @@ export default function HomeScreen() {
               />
             </View>
             
-            {/* ✨ Category Badge on Image */}
             <View style={styles.categoryBadgeOnImage}>
               <LinearGradient
                 colors={['rgba(255,255,255,0.9)', 'rgba(255,255,255,0.7)']}
@@ -433,7 +447,6 @@ export default function HomeScreen() {
             </View>
           </View>
           
-          {/* ✨ Content Section */}
           <LinearGradient
             colors={['#ffffff', '#fafbfc']}
             style={styles.cardContent}
@@ -448,7 +461,6 @@ export default function HomeScreen() {
               </Text>
             )}
             
-            {/* ✨ Meta Row */}
             <View style={styles.metaRow}>
               {address && (
                 <View style={styles.metaItem}>
@@ -469,7 +481,6 @@ export default function HomeScreen() {
               )}
             </View>
             
-            {/* ✨ CTA Button */}
             <View style={styles.ctaContainer}>
               <LinearGradient
                 colors={[Colors.gradientStart, Colors.gradientEnd]}
@@ -489,7 +500,6 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      {/* ✨ NOWY PREMIUM HEADER */}
       <View style={styles.headerWrapper}>
         <LinearGradient 
           colors={['#8B7AB8', '#B8A3E0', '#9D8AC7']} 
@@ -497,13 +507,11 @@ export default function HomeScreen() {
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
         >
-          {/* Dekoracyjne circles */}
           <View style={styles.headerCircle1} />
           <View style={styles.headerCircle2} />
           <View style={styles.headerCircle3} />
           
           <View style={styles.headerTop}>
-            {/* Logo/App Name */}
             <View style={styles.logoContainer}>
               <View style={styles.logoIcon}>
                 <Ionicons name="sparkles" size={24} color="#fff" />
@@ -511,9 +519,12 @@ export default function HomeScreen() {
               <Text style={styles.appName}>Sessly</Text>
             </View>
             
-            {/* User Actions */}
             {isLoggedIn ? (
-              <View style={styles.userBadge}>
+              <TouchableOpacity 
+                style={styles.userBadge}
+                onPress={() => router.push('/account')}
+                activeOpacity={0.8}
+              >
                 <View style={styles.avatarPlaceholder}>
                   <Text style={styles.avatarText}>
                     {(user?.first_name?.[0] || user?.username?.[0] || '?').toUpperCase()}
@@ -522,7 +533,7 @@ export default function HomeScreen() {
                 <Text style={styles.userName} numberOfLines={1}>
                   {user?.first_name || user?.username || 'Użytkownik'}
                 </Text>
-              </View>
+              </TouchableOpacity>
             ) : (
               <TouchableOpacity 
                 style={styles.loginPill}
@@ -535,18 +546,23 @@ export default function HomeScreen() {
             )}
           </View>
           
-          {/* Stats Row (optional - pokazuje statystyki) */}
           {isLoggedIn && (
             <View style={styles.statsRow}>
-              <View style={styles.statItem}>
+              {/* ✅ DODANO: Klikalne statystyki i dynamiczna liczba */}
+              <TouchableOpacity 
+                style={styles.statItem} 
+                onPress={() => router.push('/appointments')}
+                activeOpacity={0.8}
+              >
                 <Ionicons name="calendar-outline" size={18} color="#fff" />
-                <Text style={styles.statText}>0 wizyt</Text>
-              </View>
+                <Text style={styles.statText}>
+                  {upcomingAppointments} {getAppointmentsLabel(upcomingAppointments)}
+                </Text>
+              </TouchableOpacity>
             </View>
           )}
         </LinearGradient>
         
-        {/* Wave Separator */}
         <View style={styles.waveContainer}>
           <LinearGradient
             colors={['#9D8AC7', 'transparent']}
@@ -555,23 +571,21 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      {/* Actual Search Bar (functional) */}
       <View style={styles.searchContainer}>
         <SearchBar 
           value={searchQuery}
           onChangeText={handleSearchChange}
           placeholder="Szukaj firmy, usługi..."
+          onClear={() => setSearchQuery('')}
         />
       </View>
 
-      {/* Category Filter */}
       <CategoryFilter 
         categories={categories}
         selectedCategory={selectedCategory}
         onSelectCategory={handleCategorySelect}
       />
 
-      {/* Results Header */}
       <View style={styles.resultsHeader}>
         <View style={styles.resultsLeft}>
           <Ionicons name="business" size={20} color={Colors.accent} />
@@ -590,7 +604,6 @@ export default function HomeScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Business List */}
       {loading ? (
         <View style={styles.listContent}>
           <SkeletonCard />
@@ -631,7 +644,6 @@ export default function HomeScreen() {
         />
       )}
 
-      {/* Sort Modal */}
       <SortModal 
         visible={showSortModal}
         onClose={() => setShowSortModal(false)}
@@ -647,8 +659,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FAF8FF',
   },
-  
-  // ✨ NOWY HEADER STYLES
   headerWrapper: {
     position: 'relative',
   },
@@ -659,8 +669,6 @@ const styles = StyleSheet.create({
     position: 'relative',
     overflow: 'hidden',
   },
-  
-  // Dekoracyjne circles
   headerCircle1: {
     position: 'absolute',
     top: -50,
@@ -688,7 +696,6 @@ const styles = StyleSheet.create({
     borderRadius: 50,
     backgroundColor: 'rgba(255, 255, 255, 0.06)',
   },
-  
   headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -696,7 +703,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     zIndex: 1,
   },
-  
   logoContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -716,7 +722,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     letterSpacing: 0.5,
   },
-  
   userBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -746,7 +751,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#fff',
   },
-  
   loginPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -766,51 +770,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#8B7AB8',
   },
-  
-  greetingSection: {
-    marginBottom: 20,
-    zIndex: 1,
-  },
-  greetingTitle: {
-    fontSize: 28,
-    fontWeight: '900',
-    color: '#fff',
-    marginBottom: 6,
-    letterSpacing: 0.3,
-  },
-  greetingSubtitle: {
-    fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.9)',
-    fontWeight: '600',
-  },
-  
-  headerSearchContainer: {
-    marginBottom: 16,
-    zIndex: 1,
-  },
-  headerSearchBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  headerSearchInput: {
-    flex: 1,
-  },
-  headerSearchPlaceholder: {
-    fontSize: 15,
-    color: '#999',
-    fontWeight: '500',
-  },
-  
   statsRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -832,12 +791,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#fff',
   },
-  statDivider: {
-    width: 1,
-    height: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-  },
-  
   waveContainer: {
     position: 'absolute',
     bottom: 0,
@@ -850,7 +803,6 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 30,
     borderTopRightRadius: 30,
   },
-  
   searchContainer: {
     backgroundColor: '#fff',
     paddingHorizontal: 16,
@@ -861,7 +813,6 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 2,
   },
-  
   resultsHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -901,9 +852,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#fff',
   },
-  
-  // ... (reszta stylów bez zmian - listContent, cardWrapper, etc.) ...
-  
   listContent: {
     padding: 16,
     paddingBottom: 32,

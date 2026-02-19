@@ -16,6 +16,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { getUserAppointments, cancelAppointment } from '../../api/appointments';
 import { Appointment } from '../../types/api';
 import Colors from '../../constants/Colors';
+import AppointmentCard from '../../components/appointments/AppointmentCard';
 
 type FilterType = 'all' | 'upcoming' | 'past' | 'cancelled';
 
@@ -25,19 +26,6 @@ const FILTERS: { value: FilterType; label: string; icon: string }[] = [
   { value: 'past', label: 'Przeszłe', icon: 'time' },
   { value: 'cancelled', label: 'Anulowane', icon: 'close-circle' },
 ];
-
-const getStatusInfo = (status: string) => {
-  switch (status) {
-    case 'confirmed':
-      return { label: 'Potwierdzona', color: '#10b981', bg: '#d1fae5' };
-    case 'pending':
-      return { label: 'Oczekująca', color: '#f59e0b', bg: '#fef3c7' };
-    case 'cancelled':
-      return { label: 'Anulowana', color: '#ef4444', bg: '#fee2e2' };
-    default:
-      return { label: status, color: '#6b7280', bg: '#f3f4f6' };
-  }
-};
 
 export default function AppointmentsScreen() {
   const router = useRouter();
@@ -56,14 +44,10 @@ export default function AppointmentsScreen() {
     }
 
     try {
-      console.log('📤 [Appointments] Fetching appointments...');
       const data = await getUserAppointments();
-      console.log('✅ [Appointments] Loaded:', data.length);
-      
       setAppointments(data);
       setError(null);
     } catch (e: any) {
-      console.error('❌ [Appointments] Error:', e);
       setError('Nie udało się załadować wizyt');
     } finally {
       setLoading(false);
@@ -88,28 +72,20 @@ export default function AppointmentsScreen() {
         performCancel(appointmentId);
       }
     } else {
-      Alert.alert(
-        'Anuluj wizytę',
-        confirmMessage,
-        [
-          { text: 'Nie', style: 'cancel' },
-          {
-            text: 'Tak, anuluj',
-            style: 'destructive',
-            onPress: () => performCancel(appointmentId),
-          },
-        ]
-      );
+      Alert.alert('Anuluj wizytę', confirmMessage, [
+        { text: 'Nie', style: 'cancel' },
+        {
+          text: 'Tak, anuluj',
+          style: 'destructive',
+          onPress: () => performCancel(appointmentId),
+        },
+      ]);
     }
   };
 
   const performCancel = async (appointmentId: string | number) => {
     try {
-      console.log('📤 [Appointments] Cancelling appointment:', appointmentId);
       await cancelAppointment(String(appointmentId));
-      console.log('✅ [Appointments] Cancelled successfully');
-
-      // Refresh list
       fetchAppointments();
 
       if (Platform.OS === 'web') {
@@ -118,10 +94,7 @@ export default function AppointmentsScreen() {
         Alert.alert('Sukces', 'Wizyta została anulowana');
       }
     } catch (e: any) {
-      console.error('❌ [Appointments] Cancel error:', e);
-      
       const errorMessage = e?.response?.data?.detail || e?.message || 'Nie udało się anulować wizyty';
-
       if (Platform.OS === 'web') {
         window.alert(`Błąd: ${errorMessage}`);
       } else {
@@ -137,7 +110,6 @@ export default function AppointmentsScreen() {
     });
   };
 
-  // Filter appointments
   const filteredAppointments = useMemo(() => {
     const now = new Date();
 
@@ -161,102 +133,6 @@ export default function AppointmentsScreen() {
     }
   }, [appointments, filter]);
 
-  const renderAppointment = useCallback(
-    ({ item }: { item: Appointment }) => {
-      const statusInfo = getStatusInfo(item.status || 'pending');
-      const canCancel = item.status === 'confirmed' || item.status === 'pending';
-
-      const startDate = item.start ? new Date(item.start) : null;
-      const formattedDate = startDate
-        ? startDate.toLocaleString('pl-PL', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-          })
-        : 'Termin nieustalony';
-
-      // Pobierz nazwę firmy (może być string lub obiekt)
-      const businessName = typeof item.business === 'string' 
-        ? item.business 
-        : (item.business as any)?.name || 'Firma';
-
-      const businessSlug = typeof item.business === 'string'
-        ? item.business
-        : (item.business as any)?.slug || String(item.business);
-
-      return (
-        <View style={styles.card}>
-          {/* Header */}
-          <View style={styles.cardHeader}>
-            <View style={styles.serviceInfo}>
-              <Text style={styles.serviceName} numberOfLines={1}>
-                {item.service?.name || 'Brak nazwy usługi'}
-              </Text>
-              <View style={[styles.statusBadge, { backgroundColor: statusInfo.bg }]}>
-                <Text style={[styles.statusText, { color: statusInfo.color }]}>
-                  {statusInfo.label}
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Business */}
-          {item.business && (
-            <TouchableOpacity
-              style={styles.businessRow}
-              onPress={() => handleBusinessPress(businessSlug)}
-            >
-              <Ionicons name="business" size={18} color={Colors.accent} />
-              <Text style={styles.businessText} numberOfLines={1}>
-                {businessName}
-              </Text>
-              <Ionicons name="chevron-forward" size={16} color="#ccc" />
-            </TouchableOpacity>
-          )}
-
-          {/* Date & Time */}
-          <View style={styles.detailRow}>
-            <Ionicons name="calendar-outline" size={18} color="#666" />
-            <Text style={styles.detailText}>{formattedDate}</Text>
-          </View>
-
-          {/* Service Duration */}
-          {item.service?.duration && (
-            <View style={styles.detailRow}>
-              <Ionicons name="time-outline" size={18} color="#666" />
-              <Text style={styles.detailText}>
-                {(item.service as any).duration_minutes || item.service.duration} min
-              </Text>
-            </View>
-          )}
-
-          {/* Notes */}
-          {item.notes && (
-            <View style={styles.notesContainer}>
-              <Text style={styles.notesLabel}>Notatki:</Text>
-              <Text style={styles.notesText}>{item.notes}</Text>
-            </View>
-          )}
-
-          {/* Cancel Button */}
-          {canCancel && (
-            <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={() => handleCancelAppointment(item.id)}
-            >
-              <Ionicons name="close-circle-outline" size={20} color="#ef4444" />
-              <Text style={styles.cancelButtonText}>Anuluj wizytę</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      );
-    },
-    []
-  );
-
-  // Not logged in
   if (!isLoggedIn) {
     return (
       <View style={styles.centerContainer}>
@@ -272,7 +148,6 @@ export default function AppointmentsScreen() {
     );
   }
 
-  // Loading
   if (loading) {
     return (
       <View style={styles.centerContainer}>
@@ -282,7 +157,6 @@ export default function AppointmentsScreen() {
     );
   }
 
-  // Error
   if (error) {
     return (
       <View style={styles.centerContainer}>
@@ -296,7 +170,6 @@ export default function AppointmentsScreen() {
     );
   }
 
-  // Empty state for filter
   const renderEmpty = () => {
     const emptyMessages: Record<FilterType, { icon: string; text: string; subtext: string }> = {
       all: {
@@ -346,7 +219,6 @@ export default function AppointmentsScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Twoje wizyty</Text>
         <Text style={styles.headerSubtitle}>
@@ -354,7 +226,6 @@ export default function AppointmentsScreen() {
         </Text>
       </View>
 
-      {/* Filters */}
       <View style={styles.filtersContainer}>
         {FILTERS.map((f) => (
           <TouchableOpacity
@@ -376,10 +247,15 @@ export default function AppointmentsScreen() {
         ))}
       </View>
 
-      {/* List */}
       <FlatList
         data={filteredAppointments}
-        renderItem={renderAppointment}
+        renderItem={({ item }) => (
+          <AppointmentCard 
+            appointment={item} 
+            onCancel={handleCancelAppointment}
+            onBusinessPress={handleBusinessPress} 
+          />
+        )}
         keyExtractor={(item) => String(item.id)}
         contentContainerStyle={[
           styles.list,
@@ -391,7 +267,6 @@ export default function AppointmentsScreen() {
             refreshing={refreshing}
             onRefresh={onRefresh}
             tintColor={Colors.accent}
-            colors={[Colors.accent]}
           />
         }
         showsVerticalScrollIndicator={true}
@@ -500,100 +375,6 @@ const styles = StyleSheet.create({
   },
   listEmpty: {
     flexGrow: 1,
-  },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  serviceInfo: {
-    flex: 1,
-  },
-  serviceName: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#333',
-    marginBottom: 8,
-  },
-  statusBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  businessRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
-    marginTop: 8,
-    gap: 8,
-  },
-  businessText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: Colors.accent,
-    flex: 1,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-    gap: 8,
-  },
-  detailText: {
-    fontSize: 14,
-    color: '#666',
-  },
-  notesContainer: {
-    marginTop: 12,
-    padding: 12,
-    backgroundColor: '#f8f9fa',
-    borderRadius: 8,
-  },
-  notesLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#666',
-    marginBottom: 4,
-  },
-  notesText: {
-    fontSize: 14,
-    color: '#333',
-    lineHeight: 20,
-  },
-  cancelButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 12,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: '#fef2f2',
-    gap: 6,
-  },
-  cancelButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#ef4444',
   },
   emptyContainer: {
     flex: 1,

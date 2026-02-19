@@ -2,7 +2,12 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { api } from '../api/client';
-import { login as apiLogin, register as apiRegister, logout as apiLogout } from '../api/auth';
+import { 
+  login as apiLogin, 
+  register as apiRegister, 
+  logout as apiLogout,
+  getCurrentUser // <--- DODANY IMPORT
+} from '../api/auth';
 import { User } from '../types/api';
 
 type Credentials = { username: string; password: string };
@@ -22,6 +27,7 @@ type AuthContextType = {
   register: (data: RegisterData) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   updateUser: (userData: Partial<User>) => Promise<void>;
+  refreshUser: () => Promise<void>; // <--- DODANA DEKLARACJA
   isLoading: boolean;
 };
 
@@ -63,12 +69,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const response = await apiLogin(credentials);
       
-      // Zapisz dane użytkownika i tokeny
       const userData = response.user;
       
       if (Platform.OS === 'web') {
         localStorage.setItem('user', JSON.stringify(userData));
-        // Tokeny są już zapisane przez apiLogin w storage.ts
       } else {
         await AsyncStorage.setItem('user', JSON.stringify(userData));
       }
@@ -127,8 +131,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(updatedUser);
   };
 
+  // <--- DODANA FUNKCJA REFRESH USER --->
+  const refreshUser = async () => {
+    try {
+      const userData = await getCurrentUser();
+      
+      if (Platform.OS === 'web') {
+        localStorage.setItem('user', JSON.stringify(userData));
+      } else {
+        await AsyncStorage.setItem('user', JSON.stringify(userData));
+      }
+      
+      setUser(userData);
+    } catch (error) {
+      console.error('❌ [AuthContext] Failed to refresh user from API:', error);
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, isLoggedIn: !!user, login, register, logout, updateUser, isLoading }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      isLoggedIn: !!user, 
+      login, 
+      register, 
+      logout, 
+      updateUser, 
+      refreshUser, // <--- PRZEKAZANA DO KONTEKSTU
+      isLoading 
+    }}>
       {children}
     </AuthContext.Provider>
   );

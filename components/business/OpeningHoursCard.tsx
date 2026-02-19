@@ -2,17 +2,10 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Colors from '../../constants/Colors';
-
-interface OpeningHour {
-  day_of_week: number;
-  day_name: string;
-  is_closed: boolean;
-  open_time: string | null;
-  close_time: string | null;
-}
+import type { BusinessOpeningHour } from '../../types/api';
 
 interface OpeningHoursCardProps {
-  hours: OpeningHour[];
+  hours: BusinessOpeningHour[];
 }
 
 export default function OpeningHoursCard({ hours }: OpeningHoursCardProps) {
