@@ -15,17 +15,16 @@ import {
   Dimensions,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { useRouter, useFocusEffect } from 'expo-router'; // <--- DODANO useFocusEffect
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { useFavorites } from '../../contexts/FavoritesContext';
 import { searchBusinesses, getBusinessCategories, type BusinessCategory } from '../../api/business';
-import { getUserAppointments } from '../../api/appointments'; // <--- DODANO import API wizyt
+import { getUserAppointments } from '../../api/appointments';
 import { Business } from '../../types/api';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Colors from '../../constants/Colors';
 import SearchBar from '../../components/search/SearchBar';
-import CategoryFilter from '../../components/categories/CategoryFilter';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width } = Dimensions.get('window');
@@ -52,36 +51,28 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
-// Funkcja pomocnicza do poprawnej odmiany słowa "wizyta"
 const getAppointmentsLabel = (count: number) => {
   if (count === 1) return 'wizyta';
   if (count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 10 || count % 100 >= 20)) return 'wizyty';
   return 'wizyt';
 };
 
+// ANIMACJA LADOWANIA (SKELETON)
 function SkeletonCard() {
   const shimmerAnim = useState(new Animated.Value(0))[0];
 
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(shimmerAnim, {
-          toValue: 1,
-          duration: 1200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(shimmerAnim, {
-          toValue: 0,
-          duration: 1200,
-          useNativeDriver: true,
-        }),
+        Animated.timing(shimmerAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
+        Animated.timing(shimmerAnim, { toValue: 0, duration: 1000, useNativeDriver: true }),
       ])
     ).start();
   }, [shimmerAnim]);
 
   const opacity = shimmerAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0.3, 0.7],
+    outputRange: [0.4, 0.8],
   });
 
   return (
@@ -92,52 +83,23 @@ function SkeletonCard() {
         <Animated.View style={[styles.skeletonSubtitle, { opacity }]} />
         <View style={styles.skeletonRow}>
           <Animated.View style={[styles.skeletonBadge, { opacity }]} />
-          <Animated.View style={[styles.skeletonBadge, { opacity }]} />
         </View>
       </View>
     </View>
   );
 }
 
+// ANIMOWANE SERDUSZKO ULUBIONYCH
 function AnimatedHeart({ isFavorite, onPress }: { isFavorite: boolean; onPress: () => void }) {
   const scale = useState(new Animated.Value(1))[0];
-  const rotation = useState(new Animated.Value(0))[0];
 
   const handlePress = () => {
-    Animated.parallel([
-      Animated.sequence([
-        Animated.timing(scale, {
-          toValue: 1.4,
-          duration: 150,
-          useNativeDriver: true,
-        }),
-        Animated.spring(scale, {
-          toValue: 1,
-          friction: 3,
-          useNativeDriver: true,
-        }),
-      ]),
-      Animated.sequence([
-        Animated.timing(rotation, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(rotation, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]),
+    Animated.sequence([
+      Animated.timing(scale, { toValue: 1.3, duration: 120, useNativeDriver: true }),
+      Animated.timing(scale, { toValue: 1, duration: 120, useNativeDriver: true }),
     ]).start();
-
     onPress();
   };
-
-  const rotate = rotation.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '15deg'],
-  });
 
   return (
     <TouchableOpacity 
@@ -146,83 +108,45 @@ function AnimatedHeart({ isFavorite, onPress }: { isFavorite: boolean; onPress: 
       hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
       activeOpacity={0.8}
     >
-      <Animated.View style={{ transform: [{ scale }, { rotate }] }}>
+      <Animated.View style={{ transform: [{ scale }] }}>
         <Ionicons 
           name={isFavorite ? "heart" : "heart-outline"} 
-          size={26} 
-          color={isFavorite ? "#FF3B5C" : "#fff"} 
+          size={24} 
+          color={isFavorite ? "#EF4444" : "#6B7280"} 
         />
       </Animated.View>
     </TouchableOpacity>
   );
 }
 
-function SortModal({ 
-  visible, 
-  onClose, 
-  onSelect, 
-  currentSort 
-}: { 
-  visible: boolean; 
-  onClose: () => void; 
-  onSelect: (sort: SortOption) => void; 
-  currentSort: SortOption 
-}) {
+// MODAL SORTOWANIA
+function SortModal({ visible, onClose, onSelect, currentSort }: any) {
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.modalOverlay} onPress={onClose}>
         <View style={styles.modalContent}>
           <View style={styles.modalHandle} />
-          
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>Sortowanie</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Ionicons name="close-circle" size={28} color="#999" />
+              <Ionicons name="close-circle" size={28} color="#CBD5E1" />
             </TouchableOpacity>
           </View>
           
           {SORT_OPTIONS.map((option) => {
             const isActive = currentSort === option.value;
-            
             return (
               <TouchableOpacity
                 key={option.value}
-                style={[
-                  styles.sortOption,
-                  isActive && styles.sortOptionActive
-                ]}
-                onPress={() => {
-                  onSelect(option.value as SortOption);
-                  onClose();
-                }}
+                style={[styles.sortOption, isActive && styles.sortOptionActive]}
+                onPress={() => { onSelect(option.value); onClose(); }}
                 activeOpacity={0.7}
               >
-                <View style={[
-                  styles.sortOptionIcon,
-                  isActive && styles.sortOptionIconActive
-                ]}>
-                  <Ionicons 
-                    name={option.icon as any} 
-                    size={22} 
-                    color={isActive ? '#fff' : Colors.accent} 
-                  />
+                <View style={[styles.sortOptionIcon, isActive && styles.sortOptionIconActive]}>
+                  <Ionicons name={option.icon as any} size={22} color={isActive ? '#fff' : Colors.light.accent} />
                 </View>
-                
-                <Text style={[
-                  styles.sortOptionText,
-                  isActive && styles.sortOptionTextActive
-                ]}>
-                  {option.label}
-                </Text>
-                
-                {isActive && (
-                  <Ionicons name="checkmark-circle" size={24} color={Colors.accent} />
-                )}
+                <Text style={[styles.sortOptionText, isActive && styles.sortOptionTextActive]}>{option.label}</Text>
+                {isActive && <Ionicons name="checkmark-circle" size={24} color={Colors.light.accent} />}
               </TouchableOpacity>
             );
           })}
@@ -235,11 +159,13 @@ function SortModal({
 export default function HomeScreen() {
   const router = useRouter();
   const { user, isLoggedIn } = useAuth();
-  const { isFavorite, toggleFavorite } = useFavorites();
+  
+  // ✅ POBIERAMY favoriteIds, aby FlatList wiedział, kiedy ma się odświeżyć
+  const { favoriteIds, isFavorite, toggleFavorite } = useFavorites();
   
   const [businesses, setBusinesses] = useState<Business[]>([]);
-  const [categories, setCategories] = useState<BusinessCategory[]>([]);
-  const [upcomingAppointments, setUpcomingAppointments] = useState<number>(0); // <--- DODANY STAN
+  const [categories, setCategories] = useState<any[]>([]);
+  const [upcomingAppointments, setUpcomingAppointments] = useState<number>(0);
   
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
@@ -272,6 +198,11 @@ export default function HomeScreen() {
     }
   };
 
+  const handleSortSelect = (sort: SortOption) => {
+    setSortBy(sort);
+    saveSortPreference(sort);
+  };
+
   useEffect(() => {
     const loadCategories = async () => {
       try {
@@ -301,13 +232,11 @@ export default function HomeScreen() {
     loadBusinesses();
   }, [loadBusinesses]);
 
-  // ✅ DODANO: Pobieranie liczby nadchodzących wizyt
   const loadUpcomingAppointments = useCallback(async () => {
     if (!isLoggedIn) return;
     try {
       const data = await getUserAppointments();
       const now = new Date();
-      // Filtrujemy tylko te, które są z datą przyszłą i nie są anulowane
       const upcoming = data.filter((apt) => {
         if (!apt.start || !apt.status) return false;
         const startDate = new Date(apt.start);
@@ -319,7 +248,6 @@ export default function HomeScreen() {
     }
   }, [isLoggedIn]);
 
-  // ✅ DODANO: useFocusEffect - odświeża statystyki przy każdym wejściu na ten ekran
   useFocusEffect(
     useCallback(() => {
       loadUpcomingAppointments();
@@ -328,72 +256,33 @@ export default function HomeScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    // Odświeżamy zarówno firmy jak i wizyty
     await Promise.all([loadBusinesses(), loadUpcomingAppointments()]);
     setRefreshing(false);
   };
 
-  const handleBusinessPress = (business: Business) => {
-    router.push({
-      pathname: '/business/[id]',
-      params: { id: business.slug || String(business.id) },
-    });
-  };
-
   const handleFavoritePress = async (business: Business) => {
     if (!isLoggedIn) {
-      Alert.alert(
-        'Wymagane logowanie',
-        'Aby dodać firmę do ulubionych, musisz się zalogować.',
-        [
-          { text: 'Anuluj', style: 'cancel' },
-          { 
-            text: 'Zaloguj się', 
-            onPress: () => router.push('/(auth)/login')
-          }
-        ]
-      );
+      Alert.alert('Wymagane logowanie', 'Zaloguj się, aby dodać do ulubionych.', [
+        { text: 'Anuluj', style: 'cancel' },
+        { text: 'Zaloguj się', onPress: () => router.push('/(auth)/login') }
+      ]);
       return;
     }
-    
     try {
       await toggleFavorite(business);
-    } catch (error: any) {
-      console.error('❌ Toggle favorite failed:', error);
+    } catch (error) {
       Alert.alert('Błąd', 'Nie udało się zmienić statusu ulubionej');
     }
   };
 
-  const handleSortSelect = (sort: SortOption) => {
-    setSortBy(sort);
-    saveSortPreference(sort);
-  };
-
-  const handleCategorySelect = useCallback((categorySlug: string) => {
-    setSelectedCategory(categorySlug);
-  }, []);
-
-  const handleSearchChange = useCallback((text: string) => {
-    setSearchQuery(text);
-  }, []);
-
   const sortedBusinesses = useMemo(() => {
     if (!Array.isArray(businesses)) return [];
-    
     const sorted = [...businesses];
-    
     switch (sortBy) {
-      case 'name-asc':
-        sorted.sort((a, b) => a.name.localeCompare(b.name));
-        break;
-      case 'name-desc':
-        sorted.sort((a, b) => b.name.localeCompare(a.name));
-        break;
-      case 'newest':
-        sorted.sort((a, b) => String(b.id).localeCompare(String(a.id)));
-        break;
+      case 'name-asc': sorted.sort((a, b) => a.name.localeCompare(b.name)); break;
+      case 'name-desc': sorted.sort((a, b) => b.name.localeCompare(a.name)); break;
+      case 'newest': sorted.sort((a, b) => String(b.id).localeCompare(String(a.id))); break;
     }
-    
     return sorted;
   }, [businesses, sortBy]);
 
@@ -403,96 +292,145 @@ export default function HomeScreen() {
     return parts.join(', ');
   };
 
+  const renderHeader = () => (
+    <View style={styles.headerWrapper}>
+      <LinearGradient 
+        colors={['#8B5CF6', '#7C3AED']} 
+        style={styles.headerGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <View style={styles.headerCircle1} />
+        <View style={styles.headerCircle2} />
+        
+        <View style={styles.headerTop}>
+          <View style={styles.logoContainer}>
+            <Ionicons name="sparkles" size={24} color="#fff" />
+            <Text style={styles.appName}>Sessly</Text>
+          </View>
+          
+          {isLoggedIn ? (
+            <TouchableOpacity style={styles.userBadge} onPress={() => router.push('/(tabs)/account')}>
+              <Text style={styles.userName} numberOfLines={1}>
+                {user?.first_name || user?.username || 'Profil'}
+              </Text>
+              <View style={styles.avatarPlaceholder}>
+                <Text style={styles.avatarText}>
+                  {(user?.first_name?.[0] || user?.username?.[0] || '?').toUpperCase()}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.loginPill} onPress={() => router.push('/(auth)/login')}>
+              <Text style={styles.loginPillText}>Zaloguj się</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <Text style={styles.greeting}>Cześć{user?.first_name ? `, ${user.first_name}` : ''}!</Text>
+        <Text style={styles.subtitle}>Zarezerwuj wizytę w okolicy</Text>
+
+        <View style={styles.searchContainer}>
+          <SearchBar 
+            value={searchQuery} 
+            onChangeText={setSearchQuery} 
+            onClear={() => setSearchQuery('')} 
+            placeholder="Szukaj salonu lub usługi..." 
+          />
+        </View>
+
+        {isLoggedIn && upcomingAppointments > 0 && (
+          <TouchableOpacity style={styles.upcomingPill} onPress={() => router.push('/(tabs)/appointments')}>
+            <Ionicons name="calendar" size={18} color="#fff" />
+            <Text style={styles.upcomingText}>Masz {upcomingAppointments} {getAppointmentsLabel(upcomingAppointments)}</Text>
+            <Ionicons name="chevron-forward" size={16} color="#fff" />
+          </TouchableOpacity>
+        )}
+      </LinearGradient>
+
+      <View style={styles.categoriesWrapper}>
+        <FlatList
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.categoriesScroll}
+          data={[{ value: 'all', label: 'Wszystkie', slug: 'all', name: 'Wszystkie' }, ...categories]}
+          keyExtractor={(item, index) => item.value || item.slug || String(index)}
+          renderItem={({ item }) => {
+            const itemValue = item.value || item.slug;
+            const itemLabel = item.label || item.name;
+            const isActive = selectedCategory === itemValue;
+            
+            return (
+              <TouchableOpacity 
+                style={[styles.categoryChip, isActive && styles.categoryChipActive]} 
+                onPress={() => setSelectedCategory(itemValue)}
+              >
+                <Text style={[styles.categoryText, isActive && styles.categoryTextActive]}>{itemLabel}</Text>
+              </TouchableOpacity>
+            );
+          }}
+        />
+      </View>
+
+      {!loading && (
+        <View style={styles.resultsHeader}>
+          <Text style={styles.resultsCount}>{sortedBusinesses.length} {sortedBusinesses.length === 1 ? 'firma' : 'firm'}</Text>
+          <TouchableOpacity style={styles.sortButton} onPress={() => setShowSortModal(true)}>
+            <Ionicons name="swap-vertical" size={16} color={Colors.light.accent} />
+            <Text style={styles.sortButtonText}>Sortuj</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  );
+
   const renderBusinessCard = ({ item }: { item: Business }) => {
-    const businessId = String(item.id);
-    const favorite = isFavorite(businessId);
-    const categoryDisplay = item.category || 'Inne';
+    // ✅ POPRAWKA: Zawsze sprawdzamy tylko numeryczne ID (zgodnie z FavoritesContext)
+    const favorite = isFavorite(String(item.id));
+    
     const imageUrl = `https://picsum.photos/seed/${item.id}/600/400`;
     const address = formatBusinessAddress(item);
 
+    const categoryMatch = categories.find(c => (c.value === item.category) || (c.slug === item.category));
+    const categoryDisplay = categoryMatch ? (categoryMatch.label || categoryMatch.name) : item.category || 'Usługa';
+
     return (
       <TouchableOpacity 
-        style={styles.cardWrapper}
-        onPress={() => handleBusinessPress(item)}
-        activeOpacity={0.95}
+        style={styles.card}
+        onPress={() => router.push({ pathname: '/business/[id]', params: { id: item.slug || String(item.id) } })}
+        activeOpacity={0.9}
       >
-        <View style={styles.card}>
-          <View style={styles.imageContainer}>
-            <Image
-              source={{ uri: imageUrl }}
-              style={styles.businessImage}
-              contentFit="cover"
-              transition={300}
-            />
-            
-            <LinearGradient
-              colors={['transparent', 'rgba(0,0,0,0.7)']}
-              style={styles.imageGradient}
-            />
-            
-            <View style={styles.favoriteContainer}>
-              <AnimatedHeart 
-                isFavorite={favorite} 
-                onPress={() => handleFavoritePress(item)} 
-              />
+        <View style={styles.imageContainer}>
+          <Image source={{ uri: imageUrl }} style={styles.businessImage} contentFit="cover" transition={200} />
+          <View style={styles.favoriteContainer}>
+            <AnimatedHeart isFavorite={favorite} onPress={() => handleFavoritePress(item)} />
+          </View>
+        </View>
+        
+        <View style={styles.cardContent}>
+          <View style={styles.cardHeaderRow}>
+            <Text style={styles.businessName} numberOfLines={1}>{item.name}</Text>
+          </View>
+
+          <Text style={styles.categoryLabel}>{categoryDisplay}</Text>
+
+          {address ? (
+            <View style={styles.addressRow}>
+              <Ionicons name="location-outline" size={16} color={Colors.light.textSecondary} />
+              <Text style={styles.addressText} numberOfLines={1}>{address}</Text>
             </View>
-            
-            <View style={styles.categoryBadgeOnImage}>
-              <LinearGradient
-                colors={['rgba(255,255,255,0.9)', 'rgba(255,255,255,0.7)']}
-                style={styles.categoryBadgeGradient}
-              >
-                <Text style={styles.categoryBadgeText}>{categoryDisplay}</Text>
-              </LinearGradient>
+          ) : null}
+          
+          <View style={styles.cardFooter}>
+            <View style={styles.servicesCountBadge}>
+              <Text style={styles.servicesCountText}>
+                {item.services_count || 0} {item.services_count === 1 ? 'usługa' : 'usług'}
+              </Text>
+            </View>
+            <View style={styles.bookBtn}>
+              <Text style={styles.bookBtnText}>Umów</Text>
             </View>
           </View>
-          
-          <LinearGradient
-            colors={['#ffffff', '#fafbfc']}
-            style={styles.cardContent}
-          >
-            <Text style={styles.businessName} numberOfLines={1}>
-              {item.name}
-            </Text>
-            
-            {item.description && (
-              <Text style={styles.description} numberOfLines={2}>
-                {item.description}
-              </Text>
-            )}
-            
-            <View style={styles.metaRow}>
-              {address && (
-                <View style={styles.metaItem}>
-                  <Ionicons name="location" size={14} color={Colors.accent} />
-                  <Text style={styles.metaText} numberOfLines={1}>
-                    {address.split(',')[0]}
-                  </Text>
-                </View>
-              )}
-              
-              {item.services_count && item.services_count > 0 && (
-                <View style={styles.metaItem}>
-                  <Ionicons name="cut" size={14} color={Colors.accent} />
-                  <Text style={styles.metaText}>
-                    {item.services_count} {item.services_count === 1 ? 'usługa' : 'usług'}
-                  </Text>
-                </View>
-              )}
-            </View>
-            
-            <View style={styles.ctaContainer}>
-              <LinearGradient
-                colors={[Colors.gradientStart, Colors.gradientEnd]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.ctaButton}
-              >
-                <Text style={styles.ctaText}>Zobacz szczegóły</Text>
-                <Ionicons name="arrow-forward" size={16} color="#fff" />
-              </LinearGradient>
-            </View>
-          </LinearGradient>
         </View>
       </TouchableOpacity>
     );
@@ -500,650 +438,137 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.headerWrapper}>
-        <LinearGradient 
-          colors={['#8B7AB8', '#B8A3E0', '#9D8AC7']} 
-          style={styles.headerGradient}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          <View style={styles.headerCircle1} />
-          <View style={styles.headerCircle2} />
-          <View style={styles.headerCircle3} />
-          
-          <View style={styles.headerTop}>
-            <View style={styles.logoContainer}>
-              <View style={styles.logoIcon}>
-                <Ionicons name="sparkles" size={24} color="#fff" />
-              </View>
-              <Text style={styles.appName}>Sessly</Text>
-            </View>
-            
-            {isLoggedIn ? (
-              <TouchableOpacity 
-                style={styles.userBadge}
-                onPress={() => router.push('/account')}
-                activeOpacity={0.8}
-              >
-                <View style={styles.avatarPlaceholder}>
-                  <Text style={styles.avatarText}>
-                    {(user?.first_name?.[0] || user?.username?.[0] || '?').toUpperCase()}
-                  </Text>
-                </View>
-                <Text style={styles.userName} numberOfLines={1}>
-                  {user?.first_name || user?.username || 'Użytkownik'}
-                </Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity 
-                style={styles.loginPill}
-                onPress={() => router.push('/(auth)/login')}
-                activeOpacity={0.85}
-              >
-                <Ionicons name="log-in-outline" size={18} color="#8B7AB8" />
-                <Text style={styles.loginPillText}>Zaloguj się</Text>
-              </TouchableOpacity>
-            )}
+      {loading && !refreshing ? (
+        <View>
+          {renderHeader()}
+          <View style={styles.listContent}>
+            <SkeletonCard />
+            <SkeletonCard />
           </View>
-          
-          {isLoggedIn && (
-            <View style={styles.statsRow}>
-              {/* ✅ DODANO: Klikalne statystyki i dynamiczna liczba */}
-              <TouchableOpacity 
-                style={styles.statItem} 
-                onPress={() => router.push('/appointments')}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="calendar-outline" size={18} color="#fff" />
-                <Text style={styles.statText}>
-                  {upcomingAppointments} {getAppointmentsLabel(upcomingAppointments)}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </LinearGradient>
-        
-        <View style={styles.waveContainer}>
-          <LinearGradient
-            colors={['#9D8AC7', 'transparent']}
-            style={styles.wave}
-          />
-        </View>
-      </View>
-
-      <View style={styles.searchContainer}>
-        <SearchBar 
-          value={searchQuery}
-          onChangeText={handleSearchChange}
-          placeholder="Szukaj firmy, usługi..."
-          onClear={() => setSearchQuery('')}
-        />
-      </View>
-
-      <CategoryFilter 
-        categories={categories}
-        selectedCategory={selectedCategory}
-        onSelectCategory={handleCategorySelect}
-      />
-
-      <View style={styles.resultsHeader}>
-        <View style={styles.resultsLeft}>
-          <Ionicons name="business" size={20} color={Colors.accent} />
-          <Text style={styles.resultsCount}>
-            {sortedBusinesses.length} {sortedBusinesses.length === 1 ? 'firma' : 'firm'}
-          </Text>
-        </View>
-        
-        <TouchableOpacity 
-          style={styles.sortButton}
-          onPress={() => setShowSortModal(true)}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="swap-vertical" size={18} color="#fff" />
-          <Text style={styles.sortButtonText}>Sortuj</Text>
-        </TouchableOpacity>
-      </View>
-
-      {loading ? (
-        <View style={styles.listContent}>
-          <SkeletonCard />
-          <SkeletonCard />
-          <SkeletonCard />
-        </View>
-      ) : searching ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={Colors.accent} />
-          <Text style={styles.loadingText}>Wyszukiwanie...</Text>
         </View>
       ) : (
         <FlatList
           data={sortedBusinesses}
-          keyExtractor={(item) => item.slug || String(item.id)}
+          // ✅ POPRAWKA: Przekazujemy favoriteIds, by wymusić odświeżenie karty po kliknięciu!
+          extraData={favoriteIds}
+          keyExtractor={(item) => String(item.id)}
           renderItem={renderBusinessCard}
-          contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl 
-              refreshing={refreshing} 
-              onRefresh={onRefresh}
-              tintColor={Colors.accent}
-              colors={[Colors.accent]}
-            />
-          }
-          ListEmptyComponent={() => (
-            <View style={styles.emptyContainer}>
-              <View style={styles.emptyIconContainer}>
-                <Ionicons name="search-outline" size={80} color="#ddd" />
+          ListHeaderComponent={renderHeader}
+          contentContainerStyle={styles.list}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.light.accent} />}
+          ListEmptyComponent={
+            !searching ? (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="search-outline" size={80} color="#E2E8F0" />
+                <Text style={styles.emptyTitle}>Brak wyników</Text>
+                <Text style={styles.emptyText}>Nie znaleźliśmy salonów pasujących do Twoich kryteriów.</Text>
               </View>
-              <Text style={styles.emptyTitle}>Brak wyników</Text>
-              <Text style={styles.emptyText}>
-                Spróbuj zmienić kryteria wyszukiwania
-              </Text>
-            </View>
-          )}
+            ) : (
+              <ActivityIndicator size="large" color={Colors.light.accent} style={{ marginTop: 40 }} />
+            )
+          }
           showsVerticalScrollIndicator={false}
         />
       )}
 
       <SortModal 
-        visible={showSortModal}
-        onClose={() => setShowSortModal(false)}
-        onSelect={handleSortSelect}
-        currentSort={sortBy}
+        visible={showSortModal} 
+        onClose={() => setShowSortModal(false)} 
+        onSelect={handleSortSelect} 
+        currentSort={sortBy} 
       />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#FAF8FF',
-  },
-  headerWrapper: {
-    position: 'relative',
-  },
-  headerGradient: {
-    paddingTop: Platform.OS === 'ios' ? 60 : 45,
-    paddingBottom: 32,
-    paddingHorizontal: 20,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  headerCircle1: {
-    position: 'absolute',
-    top: -50,
-    right: -30,
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  headerCircle2: {
-    position: 'absolute',
-    top: 100,
-    right: 50,
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  headerCircle3: {
-    position: 'absolute',
-    bottom: 20,
-    left: -20,
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-  },
-  headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-    zIndex: 1,
-  },
-  logoContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  logoIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  appName: {
-    fontSize: 24,
-    fontWeight: '900',
-    color: '#fff',
-    letterSpacing: 0.5,
-  },
-  userBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    paddingRight: 16,
-    borderRadius: 20,
-    gap: 8,
-    maxWidth: 150,
-  },
-  avatarPlaceholder: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#fff',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarText: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#8B7AB8',
-  },
-  userName: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#fff',
-  },
-  loginPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    borderRadius: 20,
-    gap: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  loginPillText: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#8B7AB8',
-  },
-  statsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    gap: 16,
-    zIndex: 1,
-  },
-  statItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  statText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#fff',
-  },
-  waveContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 30,
-  },
-  wave: {
-    flex: 1,
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
-  },
-  searchContainer: {
-    backgroundColor: '#fff',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  resultsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5DFF5',
-  },
-  resultsLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  resultsCount: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#2D2438',
-  },
-  sortButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#8B7AB8',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    gap: 6,
-    shadowColor: '#8B7AB8',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  sortButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#fff',
-  },
-  listContent: {
-    padding: 16,
-    paddingBottom: 32,
-  },
-  cardWrapper: {
-    marginBottom: 20,
-    borderRadius: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  card: {
-    borderRadius: 20,
-    backgroundColor: '#fff',
-    overflow: 'hidden',
-  },
-  imageContainer: {
-    width: '100%',
-    height: 200,
-    position: 'relative',
-  },
-  businessImage: {
-    width: '100%',
-    height: '100%',
-  },
-  imageGradient: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 100,
-  },
-  favoriteContainer: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
+  
+  headerWrapper: { backgroundColor: '#F8FAFC' },
+  headerGradient: { paddingTop: Platform.OS === 'ios' ? 60 : 40, paddingBottom: 30, paddingHorizontal: 20, overflow: 'hidden' },
+  headerCircle1: { position: 'absolute', top: -40, right: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.1)' },
+  headerCircle2: { position: 'absolute', bottom: -20, left: -20, width: 100, height: 100, borderRadius: 50, backgroundColor: 'rgba(255,255,255,0.1)' },
+  headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, zIndex: 10 },
+  logoContainer: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  appName: { fontSize: 22, fontWeight: '900', color: '#fff', letterSpacing: 0.5 },
+  
+  userBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.2)', paddingVertical: 6, paddingLeft: 14, paddingRight: 6, borderRadius: 24, gap: 8 },
+  avatarPlaceholder: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center' },
+  avatarText: { fontSize: 14, fontWeight: '800', color: '#8B5CF6' },
+  userName: { fontSize: 14, fontWeight: '700', color: '#fff', maxWidth: 100 },
+  
+  loginPill: { backgroundColor: '#fff', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20 },
+  loginPillText: { fontSize: 14, fontWeight: '800', color: '#8B5CF6' },
+  
+  greeting: { fontSize: 26, fontWeight: '800', color: '#fff' },
+  subtitle: { fontSize: 15, color: 'rgba(255,255,255,0.8)', marginTop: 4, marginBottom: 20 },
+  
+  searchContainer: { 
     zIndex: 10,
-  },
-  favoriteButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 6,
-      },
-    }),
-  },
-  categoryBadgeOnImage: {
-    position: 'absolute',
-    bottom: 12,
-    left: 12,
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  categoryBadgeGradient: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  categoryBadgeText: {
-    color: '#333',
-    fontSize: 11,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  cardContent: {
-    padding: 16,
-  },
-  businessName: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: '#1a1a1a',
-    marginBottom: 8,
-    letterSpacing: 0.2,
-  },
-  description: {
-    fontSize: 14,
-    color: '#666',
-    lineHeight: 20,
-    marginBottom: 12,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 14,
-  },
-  metaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#F5F3FF',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
-  },
-  metaText: {
-    fontSize: 12,
-    color: '#555',
-    fontWeight: '600',
-    flex: 1,
-  },
-  ctaContainer: {
-    marginTop: 4,
-  },
-  ctaButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 12,
-    gap: 8,
-  },
-  ctaText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '800',
-    letterSpacing: 0.3,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 60,
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 15,
-    color: '#666',
-    fontWeight: '600',
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 80,
-  },
-  emptyIconContainer: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: '#F5F3FF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  emptyTitle: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: '#1a1a1a',
-    marginBottom: 8,
-  },
-  emptyText: {
-    fontSize: 15,
-    color: '#666',
-    textAlign: 'center',
-    fontWeight: '500',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 20,
-  },
-  modalHandle: {
-    width: 40,
-    height: 5,
-    backgroundColor: '#ddd',
-    borderRadius: 3,
-    alignSelf: 'center',
-    marginTop: 12,
-    marginBottom: 8,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    paddingBottom: 16,
-  },
-  modalTitle: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: '#1a1a1a',
-  },
-  closeButton: {
-    padding: 4,
-  },
-  sortOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 18,
-    marginHorizontal: 16,
-    marginVertical: 4,
+    backgroundColor: 'transparent',
     borderRadius: 16,
-    backgroundColor: '#f8f9fa',
-    gap: 14,
+    overflow: 'hidden'
   },
-  sortOptionActive: {
-    backgroundColor: '#F5F3FF',
-    borderWidth: 2,
-    borderColor: '#8B7AB8',
-  },
-  sortOptionIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#fff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  sortOptionIconActive: {
-    backgroundColor: '#8B7AB8',
-  },
-  sortOptionText: {
-    flex: 1,
-    fontSize: 16,
-    color: '#333',
-    fontWeight: '600',
-  },
-  sortOptionTextActive: {
-    fontWeight: '800',
-    color: '#8B7AB8',
-  },
-  skeletonCard: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    overflow: 'hidden',
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 6,
-  },
-  skeletonImage: {
-    width: '100%',
-    height: 200,
-    backgroundColor: '#e0e0e0',
-  },
-  skeletonContent: {
-    padding: 16,
-  },
-  skeletonTitle: {
-    width: '70%',
-    height: 20,
-    backgroundColor: '#e0e0e0',
-    borderRadius: 4,
-    marginBottom: 10,
-  },
-  skeletonSubtitle: {
-    width: '90%',
-    height: 14,
-    backgroundColor: '#e0e0e0',
-    borderRadius: 4,
-    marginBottom: 12,
-  },
-  skeletonRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  skeletonBadge: {
-    width: 80,
-    height: 28,
-    backgroundColor: '#e0e0e0',
-    borderRadius: 10,
-  },
+  
+  upcomingPill: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.2)', alignSelf: 'flex-start', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 12, marginTop: 12, gap: 6 },
+  upcomingText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+
+  categoriesWrapper: { backgroundColor: '#F8FAFC', paddingVertical: 14 },
+  categoriesScroll: { paddingHorizontal: 20, gap: 10 },
+  categoryChip: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 24, backgroundColor: '#fff', borderWidth: 1, borderColor: '#E2E8F0' },
+  categoryChipActive: { backgroundColor: '#8B5CF6', borderColor: '#8B5CF6' },
+  categoryText: { fontSize: 14, fontWeight: '600', color: '#64748B' },
+  categoryTextActive: { color: '#fff' },
+
+  resultsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 10 },
+  resultsCount: { fontSize: 15, fontWeight: '700', color: '#334155' },
+  sortButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#EDE9FE', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, gap: 6 },
+  sortButtonText: { fontSize: 14, color: '#8B5CF6', fontWeight: '700' },
+
+  list: { paddingBottom: 100 },
+  listContent: { padding: 20 },
+  
+  card: { backgroundColor: '#fff', marginHorizontal: 20, marginBottom: 20, borderRadius: 16, overflow: 'hidden', shadowColor: '#4C1D95', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 4 },
+  imageContainer: { width: '100%', height: 160, backgroundColor: '#F1F5F9', position: 'relative' },
+  businessImage: { width: '100%', height: '100%' },
+  
+  favoriteButton: { padding: 6, backgroundColor: '#fff', borderRadius: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3 },
+  favoriteContainer: { position: 'absolute', top: 12, right: 12 },
+  
+  cardContent: { padding: 16 },
+  cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 },
+  businessName: { fontSize: 18, fontWeight: '800', color: '#1E293B', flex: 1 },
+  categoryLabel: { fontSize: 13, color: '#8B5CF6', fontWeight: '600', marginBottom: 8 },
+  addressRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 14 },
+  addressText: { fontSize: 14, color: '#64748B', flex: 1 },
+  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 14 },
+  servicesCountBadge: { backgroundColor: '#F8FAFC', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  servicesCountText: { fontSize: 12, color: '#64748B', fontWeight: '600' },
+  bookBtn: { backgroundColor: '#8B5CF6', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12 },
+  bookBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+
+  emptyContainer: { alignItems: 'center', marginTop: 60, paddingHorizontal: 40 },
+  emptyTitle: { fontSize: 20, fontWeight: '800', color: '#1E293B', marginTop: 16, marginBottom: 8 },
+  emptyText: { fontSize: 15, color: '#64748B', textAlign: 'center' },
+  
+  skeletonCard: { backgroundColor: '#fff', borderRadius: 16, marginBottom: 20, overflow: 'hidden', borderWidth: 1, borderColor: '#F1F5F9' },
+  skeletonImage: { width: '100%', height: 160, backgroundColor: '#E2E8F0' },
+  skeletonContent: { padding: 16 },
+  skeletonTitle: { width: '60%', height: 20, backgroundColor: '#E2E8F0', borderRadius: 6, marginBottom: 12 },
+  skeletonSubtitle: { width: '40%', height: 14, backgroundColor: '#E2E8F0', borderRadius: 6, marginBottom: 16 },
+  skeletonRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  skeletonBadge: { width: 80, height: 30, backgroundColor: '#E2E8F0', borderRadius: 8 },
+
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: '#fff', borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 40 },
+  modalHandle: { width: 40, height: 5, backgroundColor: '#E2E8F0', borderRadius: 3, alignSelf: 'center', marginBottom: 20 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: '#1E293B' },
+  closeButton: { padding: 4 },
+  sortOption: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 16, backgroundColor: '#F8FAFC', marginBottom: 8, gap: 12 },
+  sortOptionActive: { backgroundColor: '#F5F3FF', borderWidth: 2, borderColor: '#8B5CF6' },
+  sortOptionIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center' },
+  sortOptionIconActive: { backgroundColor: '#8B5CF6' },
+  sortOptionText: { fontSize: 16, flex: 1, color: '#334155', fontWeight: '600' },
+  sortOptionTextActive: { color: '#8B5CF6', fontWeight: '800' }
 });

@@ -2,113 +2,139 @@ import React from 'react';
 import {
   TouchableOpacity,
   Text,
-  StyleSheet,
   ActivityIndicator,
   ViewStyle,
   TextStyle,
 } from 'react-native';
+import { useThemeColor } from '../../hooks/useThemeColor';
+import { Colors, Spacing, BorderRadius, Typography, Shadows } from '../../constants/designTokens';
+
+export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
+export type ButtonSize = 'sm' | 'md' | 'lg';
 
 interface ButtonProps {
   title: string;
   onPress: () => void;
-  loading?: boolean;
+  variant?: ButtonVariant;
+  size?: ButtonSize;
   disabled?: boolean;
-  variant?: 'primary' | 'outline' | 'secondary';
+  loading?: boolean;
   style?: ViewStyle;
   textStyle?: TextStyle;
+  accessibilityLabel?: string;
 }
 
 export function Button({
   title,
   onPress,
-  loading = false,
-  disabled = false,
   variant = 'primary',
+  size = 'md',
+  disabled = false,
+  loading = false,
   style,
   textStyle,
+  accessibilityLabel,
 }: ButtonProps) {
+  const isDark = useThemeColor({}, 'background') === Colors.dark.background;
+  const theme = isDark ? 'dark' : 'light';
   const isDisabled = disabled || loading;
+
+  const getButtonStyle = (): ViewStyle => {
+    const baseStyle: ViewStyle = {
+      borderRadius: BorderRadius.md,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexDirection: 'row',
+      ...Shadows.sm,
+    };
+
+    const sizeStyles: Record<ButtonSize, ViewStyle> = {
+      sm: { paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm, minHeight: 36 },
+      md: { paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, minHeight: 44 },
+      lg: { paddingHorizontal: Spacing.xl, paddingVertical: Spacing.lg, minHeight: 52 },
+    };
+
+    const variantStyles: Record<ButtonVariant, ViewStyle> = {
+      primary: {
+        backgroundColor: isDisabled ? Colors[theme].border : Colors.primary,
+      },
+      secondary: {
+        backgroundColor: isDisabled ? Colors[theme].borderLight : Colors[theme].card,
+        borderWidth: 1,
+        borderColor: Colors.primary,
+      },
+      outline: {
+        backgroundColor: 'transparent',
+        borderWidth: 1,
+        borderColor: isDisabled ? Colors[theme].border : Colors.primary,
+      },
+      ghost: {
+        backgroundColor: 'transparent',
+        shadowOpacity: 0,
+        elevation: 0,
+      },
+      danger: {
+        backgroundColor: isDisabled ? Colors[theme].border : Colors.error,
+      },
+    };
+
+    return {
+      ...baseStyle,
+      ...sizeStyles[size],
+      ...variantStyles[variant],
+      ...(isDisabled && { opacity: 0.5 }),
+      ...style,
+    };
+  };
+
+  const getTextStyle = (): TextStyle => {
+    const baseTextStyle: TextStyle = {
+      fontWeight: Typography.fontWeight.medium,
+      textAlign: 'center',
+    };
+
+    const sizeTextStyles: Record<ButtonSize, TextStyle> = {
+      sm: { fontSize: Typography.fontSize.sm },
+      md: { fontSize: Typography.fontSize.md },
+      lg: { fontSize: Typography.fontSize.lg },
+    };
+
+    const variantTextStyles: Record<ButtonVariant, TextStyle> = {
+      primary: { color: Colors.light.card },
+      secondary: { color: isDisabled ? Colors[theme].textSecondary : Colors.primary },
+      outline: { color: isDisabled ? Colors[theme].textSecondary : Colors.primary },
+      ghost: { color: isDisabled ? Colors[theme].textSecondary : Colors.primary },
+      danger: { color: Colors.light.card },
+    };
+
+    return {
+      ...baseTextStyle,
+      ...sizeTextStyles[size],
+      ...variantTextStyles[variant],
+      ...textStyle,
+    };
+  };
 
   return (
     <TouchableOpacity
-      style={[
-        styles.button,
-        variant === 'primary' && styles.primaryButton,
-        variant === 'outline' && styles.outlineButton,
-        variant === 'secondary' && styles.secondaryButton,
-        isDisabled && styles.disabledButton,
-        style,
-      ]}
+      style={getButtonStyle()}
       onPress={onPress}
       disabled={isDisabled}
+      accessibilityLabel={accessibilityLabel || title}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: isDisabled }}
       activeOpacity={0.8}
     >
-      {loading ? (
+      {loading && (
         <ActivityIndicator
-          color={variant === 'outline' ? '#FF6B35' : 'white'}
           size="small"
+          color={variant === 'primary' || variant === 'danger' ? Colors.light.card : Colors.primary}
+          style={{ marginRight: Spacing.sm }}
         />
-      ) : (
-        <Text
-          style={[
-            styles.buttonText,
-            variant === 'primary' && styles.primaryButtonText,
-            variant === 'outline' && styles.outlineButtonText,
-            variant === 'secondary' && styles.secondaryButtonText,
-            isDisabled && styles.disabledButtonText,
-            textStyle,
-          ]}
-        >
-          {title}
-        </Text>
       )}
+      <Text style={getTextStyle()}>
+        {loading ? 'Loading...' : title}
+      </Text>
     </TouchableOpacity>
   );
 }
-
-const styles = StyleSheet.create({
-  button: {
-    height: 52,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  primaryButton: {
-    backgroundColor: '#FF6B35',
-    shadowColor: '#FF6B35',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  outlineButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 2,
-    borderColor: '#FF6B35',
-  },
-  secondaryButton: {
-    backgroundColor: '#FFF5F0',
-  },
-  disabledButton: {
-    backgroundColor: '#E0E0E0',
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  buttonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  primaryButtonText: {
-    color: 'white',
-  },
-  outlineButtonText: {
-    color: '#FF6B35',
-  },
-  secondaryButtonText: {
-    color: '#FF6B35',
-  },
-  disabledButtonText: {
-    color: '#999',
-  },
-});

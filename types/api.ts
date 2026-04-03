@@ -126,7 +126,16 @@ export interface RegisterRequest {
   password2: string;
   first_name?: string;
   last_name?: string;
-  phone?: string;
+  role?: 'customer' | 'business_owner';
+  business?: {
+    name: string;
+    category: 'hairdresser' | 'doctor' | 'beauty' | 'spa' | 'fitness' | 'other';
+    phone_number: string;
+    address_line1: string;
+    city: string;
+    postal_code: string;
+    country: string;
+  };
 }
 
 export interface ChangePasswordRequest {

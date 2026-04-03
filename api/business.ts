@@ -129,8 +129,8 @@ export const deleteService = async (
 /**
  * Zaktualizuj profil własnego biznesu
  */
-export const updateBusinessProfile = async (data: Partial<Business>): Promise<Business> => {
-  const response = await apiClient.patch<Business>(`/businesses/my-business/`, data);
+export const updateBusinessProfile = async (id: string | number, data: Partial<Business>): Promise<Business> => {
+  const response = await apiClient.patch<Business>(`/businesses/my-business/${id}/`, data);
   return response.data;
 };
 
@@ -161,9 +161,26 @@ export const createBusiness = async (data: CreateBusinessData): Promise<Business
 /**
  * Pobierz własny biznes
  */
-export const getMyBusiness = async (): Promise<Business> => {
-  const response = await apiClient.get<Business>('/businesses/my-business/');
-  return response.data;
+export const getMyBusiness = async (): Promise<Business | null> => {
+  const response = await apiClient.get('/businesses/my-business/');
+  let data = response.data;
+  
+  // Jeśli backend zwraca { results: [...] } (paginacja)
+  if (data && typeof data === 'object' && Array.isArray((data as any).results)) {
+    data = (data as any).results;
+  }
+  
+  // Wyciągamy pierwszy biznes z tablicy
+  if (Array.isArray(data) && data.length > 0) {
+    return data[0];
+  }
+  
+  // Zabezpieczenie, jeśli backend kiedyś zostanie zmieniony i zwróci pojedynczy obiekt
+  if (data && !Array.isArray(data) && (data as any).id) {
+    return data as Business;
+  }
+
+  return null;
 };
 
 // --- ✅ ZARZĄDZANIE REZERWACJAMI (WŁAŚCICIEL) ---

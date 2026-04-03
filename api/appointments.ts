@@ -265,21 +265,16 @@ export const getBusinessAppointments = async (
 
 /**
  * Potwierdza wizytę (dla właściciela)
- * Endpoint: PATCH /businesses/{slug}/appointments/{id}/
- * @param businessSlug - Slug firmy
- * @param appointmentId - UUID wizyty
+ * Endpoint: POST /businesses/{slug}/appointments/{id}/confirm/
  */
 export const confirmAppointment = async (
   businessSlug: string,
   appointmentId: string
 ): Promise<Appointment> => {
   try {
-    console.log('📤 [confirmAppointment] Slug:', businessSlug, 'ID:', appointmentId);
-    const response = await apiClient.patch<Appointment>(
-      `/businesses/${businessSlug}/appointments/${appointmentId}/`,
-      { status: 'confirmed' }
+    const response = await apiClient.post<Appointment>(
+      `/businesses/${businessSlug}/appointments/${appointmentId}/confirm/`
     );
-    console.log('✅ [confirmAppointment] Success:', response.data);
     return response.data;
   } catch (error) {
     console.error('❌ [confirmAppointment] Error:', error);
@@ -289,21 +284,16 @@ export const confirmAppointment = async (
 
 /**
  * Anuluje wizytę (dla właściciela)
- * Endpoint: PATCH /businesses/{slug}/appointments/{id}/
- * @param businessSlug - Slug firmy
- * @param appointmentId - UUID wizyty
+ * Endpoint: POST /businesses/{slug}/appointments/{id}/cancel/
  */
 export const cancelBusinessAppointment = async (
   businessSlug: string,
   appointmentId: string
 ): Promise<Appointment> => {
   try {
-    console.log('📤 [cancelBusinessAppointment] Slug:', businessSlug, 'ID:', appointmentId);
-    const response = await apiClient.patch<Appointment>(
-      `/businesses/${businessSlug}/appointments/${appointmentId}/`,
-      { status: 'cancelled' }
+    const response = await apiClient.post<Appointment>(
+      `/businesses/${businessSlug}/appointments/${appointmentId}/cancel/`
     );
-    console.log('✅ [cancelBusinessAppointment] Success:', response.data);
     return response.data;
   } catch (error) {
     console.error('❌ [cancelBusinessAppointment] Error:', error);

@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { useAuth } from './AuthContext';
-import { getFavorites, toggleFavorite as apiToggleFavorite } from '../api/favorites';
+import { getFavorites, toggleFavoriteApi } from '../api/favorites';
 import { Business } from '../types/api';
 
 interface FavoritesContextType {
@@ -10,7 +10,6 @@ interface FavoritesContextType {
   toggleFavorite: (business: Business) => Promise<void>;
   refreshFavorites: () => Promise<void>;
   loading: boolean;
-  error: string | null;
 }
 
 const FavoritesContext = createContext<FavoritesContextType | undefined>(undefined);
@@ -20,66 +19,57 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
   const [favoritesData, setFavoritesData] = useState<Business[]>([]);
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  // Załaduj ulubione przy starcie
-  useEffect(() => {
-    loadFavorites();
-  }, []);
-
-  const loadFavorites = async () => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      console.log('🔵 [FavoritesContext] Loading favorites from local storage...');
-      const favorites = await getFavorites();
-      
-      console.log('✅ [FavoritesContext] Loaded favorites:', favorites.length);
-      
-      setFavoritesData(favorites);
-      
-      // Utwórz Set z ID dla szybkiego sprawdzania
-      const ids = new Set(favorites.map(b => String(b.id)));
-      setFavoriteIds(ids);
-      
-      console.log('✅ [FavoritesContext] Favorite IDs:', Array.from(ids));
-    } catch (err: any) {
-      console.error('❌ [FavoritesContext] Failed to load favorites:', err);
-      setError('Nie udało się załadować ulubionych');
+  const loadFavorites = useCallback(async () => {
+    if (!isLoggedIn) {
       setFavoritesData([]);
       setFavoriteIds(new Set());
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const favorites = await getFavorites();
+      setFavoritesData(favorites);
+      setFavoriteIds(new Set(favorites.map(b => String(b.id))));
+    } catch (err) {
+      console.error('Failed to load favorites:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [isLoggedIn]);
+
+  // Przeładuj ulubione, gdy użytkownik się loguje/wylogowuje
+  useEffect(() => {
+    loadFavorites();
+  }, [loadFavorites]);
 
   const isFavorite = (businessId: string): boolean => {
     return favoriteIds.has(String(businessId));
   };
 
   const toggleFavorite = async (business: Business) => {
+    if (!isLoggedIn) return;
     const businessIdStr = String(business.id);
-    const wasFavorite = favoriteIds.has(businessIdStr);
     
-    console.log(`🔵 [FavoritesContext] Toggling favorite for ${businessIdStr}, wasFavorite: ${wasFavorite}`);
-
     try {
-      // ✅ Toggle w lokalnym storage
-      await apiToggleFavorite(business, wasFavorite);
-      
-      // Odśwież listę po toggle
-      await loadFavorites();
-      
-      console.log('✅ [FavoritesContext] Favorites refreshed after toggle');
-    } catch (error: any) {
-      console.error('❌ [FavoritesContext] Toggle failed:', error);
-      throw error;
-    }
-  };
+      // Optymistyczna aktualizacja interfejsu dla natychmiastowej reakcji serduszka
+      const wasFavorite = favoriteIds.has(businessIdStr);
+      setFavoriteIds(prev => {
+        const next = new Set(prev);
+        if (wasFavorite) next.delete(businessIdStr);
+        else next.add(businessIdStr);
+        return next;
+      });
 
-  const refreshFavorites = async () => {
-    await loadFavorites();
+      // Strzał do backendu
+      await toggleFavoriteApi(businessIdStr);
+      // Pobranie świeżej listy dla pewności
+      await loadFavorites();
+    } catch (error) {
+      console.error('Toggle failed:', error);
+      await loadFavorites(); // W razie błędu przywracamy stan z serwera
+    }
   };
 
   return (
@@ -89,9 +79,8 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
         favoriteIds,
         isFavorite,
         toggleFavorite,
-        refreshFavorites,
+        refreshFavorites: loadFavorites,
         loading,
-        error,
       }}
     >
       {children}
@@ -101,8 +90,6 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
 
 export const useFavorites = () => {
   const context = useContext(FavoritesContext);
-  if (!context) {
-    throw new Error('useFavorites must be used within FavoritesProvider');
-  }
+  if (!context) throw new Error('useFavorites must be used within FavoritesProvider');
   return context;
 };

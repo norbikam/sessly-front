@@ -8,17 +8,10 @@ import {
   logout as apiLogout,
   getCurrentUser // <--- DODANY IMPORT
 } from '../api/auth';
-import { User } from '../types/api';
+import { RegisterRequest, User } from '../types/api';
 
 type Credentials = { username: string; password: string };
-type RegisterData = {
-  username: string;
-  email: string;
-  password: string;
-  password2: string;
-  first_name?: string;
-  last_name?: string;
-};
+type RegisterData = RegisterRequest;
 
 type AuthContextType = {
   user: User | null;
