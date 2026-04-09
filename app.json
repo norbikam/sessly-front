@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "sessly",
+    "name": "Sessly",
     "slug": "sessly",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -10,11 +10,15 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "com.sessly.app",
+      "buildNumber": "1",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Sessly potrzebuje dostępu do lokalizacji, aby pokazać Cię na mapie."
       }
     },
     "android": {
+      "package": "com.sessly.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

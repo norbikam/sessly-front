@@ -5,9 +5,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const DEV_HOST_IP = 'localhost';
 const DEV_PORT = '8000';
 
+// TODO: Replace with your real production API URL before publishing
+const PRODUCTION_URL = 'https://api.sessly.pl/api';
+
 const BASE_URL = __DEV__
   ? (Platform.OS === 'android' ? `http://10.0.2.2:${DEV_PORT}/api` : `http://${DEV_HOST_IP}:${DEV_PORT}/api`)
-  : 'https://api.twoja-produkcja.pl/api';
+  : PRODUCTION_URL;
 
 // Eksportuj instancję axios jako apiClient (default export)
 const apiClient = axios.create({
