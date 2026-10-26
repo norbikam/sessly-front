@@ -58,6 +58,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (storedUserStr && accessToken) {
         setUser(JSON.parse(storedUserStr));
+        // Always revalidate against API so email_verified (and similar) stay fresh
+        // after magic-link confirmation in another tab/session.
+        try {
+          const userData = await getCurrentUser();
+          if (Platform.OS === 'web') {
+            localStorage.setItem('user', JSON.stringify(userData));
+          } else {
+            await AsyncStorage.setItem('user', JSON.stringify(userData));
+          }
+          setUser(userData);
+        } catch (refreshError) {
+          console.error('Failed to refresh stored user from API:', refreshError);
+        }
       }
       setSavedAccounts(await getSavedAccounts());
     } catch (error) {

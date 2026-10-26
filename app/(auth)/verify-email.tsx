@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -12,7 +12,7 @@ const RESEND_COOLDOWN_SEC = 60;
 
 export default function VerifyEmailScreen() {
   const router = useRouter();
-  const { isLoggedIn, refreshUser } = useAuth();
+  const { isLoggedIn, refreshUser, updateUser, isLoading: authLoading } = useAuth();
   const params = useLocalSearchParams<{ email?: string; code?: string; token?: string }>();
   const [email, setEmail] = useState(params.email || '');
   const [code, setCode] = useState(params.code || '');
@@ -20,6 +20,7 @@ export default function VerifyEmailScreen() {
   const [resending, setResending] = useState(false);
   const [autoTried, setAutoTried] = useState(false);
   const [cooldown, setCooldown] = useState(0);
+  const submittingRef = useRef(false);
 
   useEffect(() => {
     if (cooldown <= 0) return undefined;
@@ -27,7 +28,16 @@ export default function VerifyEmailScreen() {
     return () => clearTimeout(timer);
   }, [cooldown]);
 
+  const markVerifiedLocally = async () => {
+    await refreshUser();
+    await updateUser({
+      email_verified: true,
+      email_verified_at: new Date().toISOString(),
+    });
+  };
+
   const submit = async (opts?: { token?: string; email?: string; code?: string }) => {
+    if (submittingRef.current) return;
     const token = (opts?.token ?? params.token ?? '').toString().trim();
     const mail = (opts?.email ?? email).trim();
     const pin = (opts?.code ?? code).trim();
@@ -36,25 +46,34 @@ export default function VerifyEmailScreen() {
       return;
     }
     try {
+      submittingRef.current = true;
       setLoading(true);
       await verifyEmail({ email: mail, code: pin, token });
-      if (isLoggedIn) {
-        await refreshUser();
-        notify('Konto aktywne', 'Adres e-mail został potwierdzony.');
-        router.replace('/(tabs)');
-      } else {
-        notify('Konto aktywne', 'Adres e-mail został potwierdzony. Możesz umawiać wizyty.');
-        router.replace('/(auth)/login');
-      }
+      await markVerifiedLocally();
+      notify('Konto aktywne', 'Adres e-mail został potwierdzony.');
+      router.replace(isLoggedIn ? '/(tabs)' : '/(auth)/login');
     } catch (error: any) {
-      notify('Błąd weryfikacji', error?.message || 'Kod lub link jest nieprawidłowy.');
+      const message = error?.message || 'Kod lub link jest nieprawidłowy.';
+      // Idempotent API / used link: refresh from server; only succeed if actually verified.
+      await refreshUser();
+      if (/już potwierdzony|already/i.test(message)) {
+        await updateUser({
+          email_verified: true,
+          email_verified_at: new Date().toISOString(),
+        });
+        notify('Konto aktywne', 'Adres e-mail jest już potwierdzony.');
+        router.replace(isLoggedIn ? '/(tabs)' : '/(auth)/login');
+        return;
+      }
+      notify('Błąd weryfikacji', message);
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (autoTried) return;
+    if (autoTried || authLoading) return;
     const token = (params.token || '').toString().trim();
     const pin = (params.code || '').toString().trim();
     if (token || (params.email && pin.length === 6)) {
@@ -65,7 +84,7 @@ export default function VerifyEmailScreen() {
         code: pin,
       });
     }
-  }, [params.token, params.email, params.code, autoTried]);
+  }, [params.token, params.email, params.code, autoTried, authLoading]);
 
   const resend = async () => {
     if (!email.trim() || cooldown > 0) return;
@@ -92,6 +111,9 @@ export default function VerifyEmailScreen() {
         <Text style={styles.subtitle}>
           Kliknij link z wiadomości albo wpisz kod. Bez tego możesz korzystać z apki, ale nie umówisz wizyty.
         </Text>
+        {(authLoading || loading) && (
+          <ActivityIndicator color={Colors.light.accent} style={{ marginBottom: 16 }} />
+        )}
         <TextInput
           style={styles.input}
           value={email}
@@ -109,7 +131,7 @@ export default function VerifyEmailScreen() {
           maxLength={6}
           textAlign="center"
         />
-        <TouchableOpacity style={styles.button} onPress={() => submit()} disabled={loading}>
+        <TouchableOpacity style={styles.button} onPress={() => submit()} disabled={loading || authLoading}>
           {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Potwierdź konto</Text>}
         </TouchableOpacity>
         <TouchableOpacity style={styles.resend} onPress={resend} disabled={resending || cooldown > 0}>

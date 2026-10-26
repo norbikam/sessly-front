@@ -36,6 +36,24 @@ export function EmailVerificationBanner() {
     return () => clearTimeout(timer);
   }, [cooldown]);
 
+  // Re-check verification status after magic-link confirm / focus back on the tab.
+  useEffect(() => {
+    if (!isLoggedIn || !user?.email) return undefined;
+    if (user.email_verified || user.email_verified_at) return undefined;
+    void refreshUser();
+
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return undefined;
+    const onFocus = () => {
+      void refreshUser();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
+  }, [isLoggedIn, user?.id, user?.email_verified, user?.email_verified_at, refreshUser]);
+
   if (!needsVerification) return null;
 
   const submitCode = async () => {
