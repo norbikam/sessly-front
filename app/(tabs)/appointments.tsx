@@ -10,7 +10,7 @@ import {
   Platform,
   Alert,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -37,6 +37,7 @@ const FILTERS: { value: FilterType; label: string; icon: string }[] = [
 export default function AppointmentsScreen() {
   const router = useRouter();
   const { isLoggedIn } = useAuth();
+  const { payment: paymentParam } = useLocalSearchParams<{ payment?: string }>();
 
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,6 +68,21 @@ export default function AppointmentsScreen() {
   useEffect(() => {
     void Promise.resolve().then(fetchAppointments);
   }, [fetchAppointments]);
+
+  useEffect(() => {
+    if (!paymentParam) return;
+    void fetchAppointments();
+    if (paymentParam === 'success') {
+      const msg = 'Dziękujemy — status zaliczki odświeżymy po potwierdzeniu Stripe.';
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Płatność', msg);
+    } else if (paymentParam === 'cancel') {
+      const msg = 'Płatność została anulowana.';
+      if (Platform.OS === 'web') window.alert(msg);
+      else Alert.alert('Płatność', msg);
+    }
+    router.replace('/(tabs)/appointments');
+  }, [paymentParam, fetchAppointments, router]);
 
   const onRefresh = () => {
     setRefreshing(true);

@@ -20,7 +20,9 @@
         "EXPO_PUBLIC_API_URL": "https://api.sessly.pl",
         "EXPO_PUBLIC_WEB_URL": "https://sessly.pl",
         "EXPO_PUBLIC_SUPPORT_EMAIL": "support@sessly.pl",
-        "EXPO_PUBLIC_PHONE_VERIFY_ENABLED": "false"
+        "EXPO_PUBLIC_PHONE_VERIFY_ENABLED": "false",
+        "EXPO_PUBLIC_EAS_PROJECT_ID": "",
+        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": ""
       }
     },
     "production": {
@@ -31,7 +33,9 @@
         "EXPO_PUBLIC_SUPPORT_EMAIL": "support@sessly.pl",
         "EXPO_PUBLIC_PRIVACY_URL": "https://sessly.pl/privacy",
         "EXPO_PUBLIC_TERMS_URL": "https://sessly.pl/terms",
-        "EXPO_PUBLIC_PHONE_VERIFY_ENABLED": "false"
+        "EXPO_PUBLIC_PHONE_VERIFY_ENABLED": "false",
+        "EXPO_PUBLIC_EAS_PROJECT_ID": "",
+        "EXPO_PUBLIC_GOOGLE_MAPS_API_KEY": ""
       }
     }
   },
