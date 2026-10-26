@@ -21,10 +21,12 @@ export interface AppointmentFilters {
 }
 
 export interface CreateAppointmentData {
-  service_id: string;
+  service_id?: string;
+  service_ids?: string[];
   date: string; // YYYY-MM-DD
   start_time: string; // HH:MM
   notes?: string;
+  staff_id?: string;
 }
 
 export interface CreateAppointmentResponse {
@@ -144,6 +146,29 @@ export const cancelAppointment = async (
 };
 
 /**
+ * Przekłada wizytę klienta na nowy termin
+ * Endpoint: POST /users/appointments/{id}/reschedule/
+ */
+export const rescheduleAppointment = async (
+  appointmentId: string,
+  data: { date: string; start_time: string; staff_id?: string | null }
+): Promise<Appointment> => {
+  try {
+    const response = await apiClient.post<any>(
+      `/users/appointments/${appointmentId}/reschedule/`,
+      data
+    );
+    if (response.data?.data) {
+      return response.data.data as Appointment;
+    }
+    return response.data as Appointment;
+  } catch (error) {
+    console.error('❌ [rescheduleAppointment] Error:', error);
+    throw error;
+  }
+};
+
+/**
  * Tworzy nową rezerwację
  * Endpoint: POST /businesses/{slug}/appointments/
  * @param businessSlug - Slug firmy
@@ -163,13 +188,18 @@ export const createAppointment = async (
     return response.data;
   } catch (error: any) {
     console.error('❌ [createAppointment] Error:', error);
-    
+
+    const payload = error?.response?.data;
     const errorMessage =
-      error?.response?.data?.detail ||
-      error?.response?.data?.message ||
+      payload?.error?.message ||
+      payload?.detail ||
+      payload?.message ||
       'Nie udało się utworzyć rezerwacji';
-    
-    throw new Error(errorMessage);
+
+    const err = new Error(errorMessage) as Error & { code?: string; response?: unknown };
+    err.code = payload?.error?.code;
+    err.response = error?.response;
+    throw err;
   }
 };
 
@@ -182,11 +212,19 @@ export const createAppointment = async (
  */
 export const getAvailability = async (
   businessSlug: string,
-  serviceId: string,
-  date: string
+  serviceId: string | string[],
+  date: string,
+  staffId?: string,
 ): Promise<AvailabilityResponse> => {
   try {
-    const url = `/businesses/${businessSlug}/availability/?service_id=${serviceId}&date=${date}`;
+    const params = new URLSearchParams({ date });
+    if (Array.isArray(serviceId)) {
+      params.set('service_ids', serviceId.join(','));
+    } else {
+      params.set('service_id', serviceId);
+    }
+    if (staffId) params.set('staff_id', staffId);
+    const url = `/businesses/${businessSlug}/availability/?${params.toString()}`;
     console.log('📤 [getAvailability] URL:', url);
 
     const response = await apiClient.get<AvailabilityResponse>(url);
@@ -231,6 +269,7 @@ export const getBusinessAppointments = async (
     status?: 'pending' | 'confirmed' | 'cancelled' | 'completed';
     start_date?: string;
     end_date?: string;
+    staff_id?: string;
   }
 ): Promise<Appointment[]> => {
   try {
@@ -238,6 +277,7 @@ export const getBusinessAppointments = async (
     if (filters?.status) params.append('status', filters.status);
     if (filters?.start_date) params.append('start_date', filters.start_date);
     if (filters?.end_date) params.append('end_date', filters.end_date);
+    if (filters?.staff_id) params.append('staff_id', filters.staff_id);
 
     const url = `/businesses/${businessSlug}/appointments/${
       params.toString() ? `?${params}` : ''
@@ -247,13 +287,21 @@ export const getBusinessAppointments = async (
     const response = await apiClient.get<any>(url);
     console.log('✅ [getBusinessAppointments] Response:', response.data);
 
-    // Normalizacja
+    // Normalizacja odpowiedzi z różnych wersji backendu
     if (Array.isArray(response.data)) {
       return response.data;
-    } else if (response.data?.results) {
+    }
+
+    if (Array.isArray(response.data?.results)) {
       return response.data.results;
-    } else if (response.data?.data) {
+    }
+
+    if (Array.isArray(response.data?.data)) {
       return response.data.data;
+    }
+
+    if (Array.isArray(response.data?.appointments)) {
+      return response.data.appointments;
     }
 
     return [];
@@ -269,17 +317,54 @@ export const getBusinessAppointments = async (
  */
 export const confirmAppointment = async (
   businessSlug: string,
-  appointmentId: string
+  appointmentId: string,
+  options?: {
+    date?: string;
+    start_time?: string;
+    duration_minutes?: number;
+    staff_id?: string;
+  }
 ): Promise<Appointment> => {
   try {
     const response = await apiClient.post<Appointment>(
-      `/businesses/${businessSlug}/appointments/${appointmentId}/confirm/`
+      `/businesses/${businessSlug}/appointments/${appointmentId}/confirm/`,
+      options || {}
     );
     return response.data;
   } catch (error) {
     console.error('❌ [confirmAppointment] Error:', error);
     throw error;
   }
+};
+
+export const completeAppointment = async (
+  businessSlug: string,
+  appointmentId: string
+): Promise<Appointment> => {
+  const response = await apiClient.post<Appointment>(
+    `/businesses/${businessSlug}/appointments/${appointmentId}/complete/`
+  );
+  return response.data;
+};
+
+export const createManualAppointment = async (
+  businessSlug: string,
+  data: {
+    service_id: string;
+    date: string;
+    start_time: string;
+    guest_name: string;
+    source: 'phone' | 'walk_in';
+    duration_minutes?: number;
+    notes?: string;
+    staff_id?: string;
+  }
+): Promise<Appointment> => {
+  const response = await apiClient.post<Appointment>(
+    `/businesses/${businessSlug}/appointments/manual/`,
+    data
+  );
+  return response.data;
 };
 
 /**

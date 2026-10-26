@@ -2,7 +2,10 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Colors from '../../constants/Colors';
+import { useLocale } from '../../contexts/LocaleContext';
 import type { Service } from '../../types/api';
+import { formatServicePrice } from '../../utils/currency';
+import { localizedName } from '../../utils/localized';
 
 interface ServiceCardProps {
   service: Service;
@@ -10,15 +13,14 @@ interface ServiceCardProps {
 }
 
 export default function ServiceCard({ service, onBookClick }: ServiceCardProps) {
-  // Używamy poprawnych typów zdefiniowanych w types/api.ts
+  const { currency, language, t } = useLocale();
   const duration = service.duration_minutes;
-  // Fallback dla ceny - jeśli price_amount jest niezdefiniowane, można wyświetlić np. '-'
-  const price = service.price_amount !== undefined ? service.price_amount : '-';
+  const price = formatServicePrice(service, currency);
 
   return (
     <View style={styles.serviceCard}>
       <View style={styles.serviceInfo}>
-        <Text style={styles.serviceName}>{service.name}</Text>
+        <Text style={styles.serviceName}>{localizedName(service, language)}</Text>
         <View style={styles.serviceMeta}>
           <View style={styles.metaItem}>
             <Ionicons name="time-outline" size={16} color="#666" />
@@ -26,7 +28,7 @@ export default function ServiceCard({ service, onBookClick }: ServiceCardProps) 
           </View>
           <View style={styles.metaItem}>
             <Ionicons name="cash-outline" size={16} color="#666" />
-            <Text style={styles.metaText}>{price} PLN</Text>
+            <Text style={styles.metaText}>{price}</Text>
           </View>
         </View>
       </View>
@@ -34,7 +36,7 @@ export default function ServiceCard({ service, onBookClick }: ServiceCardProps) 
         style={styles.bookButton}
         onPress={() => onBookClick(service)}
       >
-        <Text style={styles.bookButtonText}>Zarezerwuj</Text>
+        <Text style={styles.bookButtonText}>{t('booking.book')}</Text>
       </TouchableOpacity>
     </View>
   );

@@ -1,41 +1,120 @@
-import axios from 'axios';
+import axios, { create as createAxios, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { Platform } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
+import { getApiLanguage } from '../i18n/languageStore';
+import { getRefreshToken, getToken, removeToken, updateAccessToken } from '../utils/storage';
+import { notifySessionExpired } from '../utils/session';
 
-const DEV_HOST_IP = 'localhost';
 const DEV_PORT = '8000';
 
-// TODO: Replace with your real production API URL before publishing
-const PRODUCTION_URL = 'https://api.sessly.pl/api';
+function normalizeApiUrl(value: string): string {
+  const trimmed = value.replace(/\/+$/, '');
+  return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
+}
+
+function getDevUrl(): string {
+  const fullUrl = process.env.EXPO_PUBLIC_API_URL;
+  if (fullUrl) return normalizeApiUrl(fullUrl);
+
+  const fromEnv = process.env.EXPO_PUBLIC_API_HOST;
+  if (fromEnv?.startsWith('http://') || fromEnv?.startsWith('https://')) {
+    return normalizeApiUrl(fromEnv);
+  }
+  if (fromEnv) return `http://${fromEnv}:${DEV_PORT}/api`;
+
+  const hostUri =
+    Constants.expoConfig?.hostUri ||
+    (Constants as { linkingUri?: string }).linkingUri;
+
+  const host = hostUri
+    ?.replace(/^[a-z]+:\/\//, "")
+    .split(":")[0]
+    .split("/")[0];
+
+  if (host && host !== "localhost" && host !== "127.0.0.1") {
+    return `http://${host}:${DEV_PORT}/api`;
+  }
+
+  if (Platform.OS === "android") {
+    return `http://10.0.2.2:${DEV_PORT}/api`;
+  }
+
+  return `http://localhost:${DEV_PORT}/api`;
+}
+
+const productionApiUrl = process.env.EXPO_PUBLIC_API_URL;
+if (!__DEV__ && !productionApiUrl) {
+  throw new Error('EXPO_PUBLIC_API_URL must be configured for production builds.');
+}
 
 const BASE_URL = __DEV__
-  ? (Platform.OS === 'android' ? `http://10.0.2.2:${DEV_PORT}/api` : `http://${DEV_HOST_IP}:${DEV_PORT}/api`)
-  : PRODUCTION_URL;
+  ? getDevUrl()
+  : normalizeApiUrl(productionApiUrl as string);
 
-// Eksportuj instancję axios jako apiClient (default export)
-const apiClient = axios.create({
+export const API_BASE_URL = BASE_URL;
+
+type RetriableConfig = InternalAxiosRequestConfig & {
+  _retry?: boolean;
+  _retryAnonymous?: boolean;
+};
+
+const apiClient = createAxios({
   baseURL: BASE_URL,
-  timeout: 60000,
+  timeout: 15000,
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Dodaj JWT token do każdego żądania (jeśli użytkownik jest zalogowany)
+let refreshPromise: Promise<string | null> | null = null;
+
+async function refreshAccessToken(): Promise<string | null> {
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      const refreshToken = await getRefreshToken();
+      if (!refreshToken) return null;
+
+      const response = await axios.post(`${BASE_URL}/users/token/refresh/`, {
+        refresh: refreshToken,
+      });
+      const access = response.data?.access as string | undefined;
+      if (!access) return null;
+      await updateAccessToken(access);
+      return access;
+    })().finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
+}
+
+function clearAuthHeader(config: RetriableConfig) {
+  if (config.headers) {
+    delete (config.headers as Record<string, unknown>).Authorization;
+    delete (config.headers as Record<string, unknown>).authorization;
+  }
+}
+
 apiClient.interceptors.request.use(
   async (config) => {
     try {
-      // Pobierz token z AsyncStorage
-      let accessToken = await AsyncStorage.getItem('access_token');
-      
-      // ✅ FALLBACK do localStorage dla web
-      if (!accessToken && Platform.OS === 'web') {
-        accessToken = localStorage.getItem('access_token');
-      }
-      
+      const accessToken = await getToken();
+
       if (accessToken) {
         config.headers.Authorization = `Bearer ${accessToken}`;
       }
 
-      // Zapewnij trailing slash dla POST/PUT/PATCH/DELETE (Django APPEND_SLASH)
+      config.headers['Accept-Language'] = getApiLanguage();
+
+      // FormData must keep the browser/RN multipart boundary — never force JSON.
+      if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+        const headers = config.headers as { delete?: (name: string) => void } & Record<string, unknown>;
+        if (typeof headers.delete === 'function') {
+          headers.delete('Content-Type');
+        } else {
+          delete headers['Content-Type'];
+          delete headers['content-type'];
+        }
+      }
+
       const method = (config.method || 'get').toLowerCase();
       if (['post', 'put', 'patch', 'delete'].includes(method) && config.url) {
         const [path, qs] = config.url.split('?');
@@ -51,61 +130,41 @@ apiClient.interceptors.request.use(
   (err) => Promise.reject(err)
 );
 
-// Obsługa błędów i odświeżania tokenu
 apiClient.interceptors.response.use(
   (res) => res,
-  async (error) => {
-    const originalRequest = error.config;
+  async (error: AxiosError) => {
+    const originalRequest = error.config as RetriableConfig | undefined;
+    const status = error.response?.status;
+    const url = originalRequest?.url || '';
 
-    console.log('AXIOS ERROR', {
-      message: error.message,
-      code: error.code,
-      url: error.config?.url,
-      status: error.response?.status,
-      data: error.response?.data,
-    });
-
-    // Jeśli dostaniemy 401 i to nie była próba logowania, spróbuj odświeżyć token
     if (
-      error.response?.status === 401 &&
+      status === 401 &&
+      originalRequest &&
       !originalRequest._retry &&
-      !originalRequest.url?.includes('/login/')
+      !url.includes('/login/') &&
+      !url.includes('/token/refresh/') &&
+      !url.includes('/register/')
     ) {
       originalRequest._retry = true;
 
       try {
-        let refreshToken = await AsyncStorage.getItem('refresh_token');
-        
-        // ✅ FALLBACK do localStorage dla web
-        if (!refreshToken && Platform.OS === 'web') {
-          refreshToken = localStorage.getItem('refresh_token');
-        }
-        
-        if (refreshToken) {
-          const response = await axios.post(`${BASE_URL}/users/token/refresh/`, {
-            refresh: refreshToken,
-          });
-
-          const { access } = response.data;
-          await AsyncStorage.setItem('access_token', access);
-          
-          // ✅ Zapisz też do localStorage na web
-          if (Platform.OS === 'web') {
-            localStorage.setItem('access_token', access);
-          }
-
-          // Powtórz oryginalne żądanie z nowym tokenem
+        const access = await refreshAccessToken();
+        if (access) {
+          originalRequest.headers = originalRequest.headers || {};
           originalRequest.headers.Authorization = `Bearer ${access}`;
           return apiClient(originalRequest);
         }
-      } catch (refreshError) {
-        console.error('Token refresh failed:', refreshError);
-        // Wyczyść tokeny i wyloguj użytkownika
-        await AsyncStorage.multiRemove(['access_token', 'refresh_token', 'user']);
-        if (Platform.OS === 'web') {
-          localStorage.removeItem('access_token');
-          localStorage.removeItem('refresh_token');
-        }
+      } catch {
+        // Fall through to anonymous retry / session clear.
+      }
+
+      await removeToken();
+      notifySessionExpired();
+
+      if (!originalRequest._retryAnonymous) {
+        originalRequest._retryAnonymous = true;
+        clearAuthHeader(originalRequest);
+        return apiClient(originalRequest);
       }
     }
 
@@ -113,8 +172,5 @@ apiClient.interceptors.response.use(
   }
 );
 
-// ✅ Default export (dla import apiClient from './client')
 export default apiClient;
-
-// ✅ Named export (dla import { api } from './client')
 export const api = apiClient;

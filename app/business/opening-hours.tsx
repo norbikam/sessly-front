@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   View, Text, StyleSheet, TouchableOpacity, 
   ActivityIndicator, ScrollView, Switch, TextInput, Alert, Platform
@@ -6,8 +6,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import apiClient from '../../api/client';
-import { useAuth } from '../../contexts/AuthContext';
 import Colors from '../../constants/Colors';
+import { useLocation } from '../../contexts/LocationContext';
 
 const DAYS_OF_WEEK = [
   { id: 0, label: 'Poniedziałek' },
@@ -20,8 +20,8 @@ const DAYS_OF_WEEK = [
 ];
 
 export default function OpeningHoursScreen() {
-  const { user } = useAuth();
-  const businessSlug = (user as any)?.business?.slug;
+  const { activeLocation } = useLocation();
+  const businessSlug = activeLocation?.slug;
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -35,41 +35,42 @@ export default function OpeningHoursScreen() {
     }))
   );
 
-  useEffect(() => {
-    if (businessSlug) {
-      fetchHours();
-    } else {
-      setLoading(false);
-    }
-  }, [businessSlug]);
-
-  const fetchHours = async () => {
+  const fetchHours = useCallback(async () => {
     try {
       const response = await apiClient.get(`/businesses/${businessSlug}/opening-hours/`);
       const existingHours = response.data;
       
       // Jeśli backend ma już zapisane godziny, nakładamy je na nasz domyślny stan
       if (Array.isArray(existingHours) && existingHours.length > 0) {
-        const mergedHours = hours.map(defaultDay => {
-          const found = existingHours.find(h => h.day_of_week === defaultDay.day_of_week);
-          if (found) {
-            return {
-              day_of_week: found.day_of_week,
-              is_closed: found.is_closed,
-              open_time: found.open_time ? found.open_time.substring(0, 5) : '09:00',
-              close_time: found.close_time ? found.close_time.substring(0, 5) : '17:00'
-            };
-          }
-          return defaultDay;
-        });
-        setHours(mergedHours);
+        setHours(currentHours =>
+          currentHours.map(defaultDay => {
+            const found = existingHours.find(h => h.day_of_week === defaultDay.day_of_week);
+            if (found) {
+              return {
+                day_of_week: found.day_of_week,
+                is_closed: found.is_closed,
+                open_time: found.open_time ? found.open_time.substring(0, 5) : '09:00',
+                close_time: found.close_time ? found.close_time.substring(0, 5) : '17:00'
+              };
+            }
+            return defaultDay;
+          })
+        );
       }
     } catch (e) {
       console.log('Nie udało się pobrać godzin (może to pierwszy raz)', e);
     } finally {
       setLoading(false);
     }
-  };
+  }, [businessSlug]);
+
+  useEffect(() => {
+    if (businessSlug) {
+      void Promise.resolve().then(fetchHours);
+    } else {
+      void Promise.resolve().then(() => setLoading(false));
+    }
+  }, [businessSlug, fetchHours]);
 
   const handleUpdateDay = (dayId: number, field: string, value: any) => {
     setHours(prev => prev.map(h => h.day_of_week === dayId ? { ...h, [field]: value } : h));

@@ -18,7 +18,6 @@ interface SearchBarProps {
   loading?: boolean;
 }
 
-// ✅ React.memo - zapobiega re-renderom gdy props się nie zmieniają
 const SearchBar: React.FC<SearchBarProps> = memo(({
   value,
   onChangeText,
@@ -42,7 +41,7 @@ const SearchBar: React.FC<SearchBarProps> = memo(({
           color={isFocused ? Colors.accent : '#999'}
           style={styles.searchIcon}
         />
-        
+
         <TextInput
           style={styles.input}
           value={value}
@@ -54,6 +53,7 @@ const SearchBar: React.FC<SearchBarProps> = memo(({
           returnKeyType="search"
           autoCapitalize="none"
           autoCorrect={false}
+          blurOnSubmit={false}
         />
 
         {loading ? (
@@ -70,27 +70,20 @@ const SearchBar: React.FC<SearchBarProps> = memo(({
       </View>
     </View>
   );
-}, (prevProps, nextProps) => {
-  // ✅ Custom comparison - re-render TYLKO gdy te props się zmienią
-  return (
-    prevProps.value === nextProps.value &&
-    prevProps.loading === nextProps.loading &&
-    prevProps.placeholder === nextProps.placeholder
-  );
 });
 
 SearchBar.displayName = 'SearchBar';
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#fff',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    backgroundColor: 'transparent',
+    paddingHorizontal: 0,
+    paddingVertical: 0,
   },
   searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
+    backgroundColor: '#fff',
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: Platform.OS === 'ios' ? 12 : 8,
@@ -109,9 +102,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333',
     padding: 0,
-    ...(Platform.OS === 'web' ? {
-      
-    } : {}),
+    ...(Platform.OS === 'web' ? { outlineStyle: 'none' as any } : null),
   },
   clearButton: {
     padding: 4,

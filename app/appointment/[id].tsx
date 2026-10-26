@@ -27,10 +27,7 @@ export default function AppointmentDetailScreen() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchAppointmentDetail();
-  }, [id]);
-
-  const fetchAppointmentDetail = async () => {
+    const fetchAppointmentDetail = async () => {
     if (!id) {
       setError('Brak ID wizyty');
       setLoading(false);
@@ -49,7 +46,7 @@ export default function AppointmentDetailScreen() {
         setAppointment(apt);
         setLoading(false);
         return;
-      } catch (directError) {
+      } catch {
         console.log('[AppointmentDetail] Direct fetch failed, trying list approach');
       }
       
@@ -108,7 +105,10 @@ export default function AppointmentDetailScreen() {
     } finally {
       setLoading(false);
     }
-  };
+    };
+
+    void fetchAppointmentDetail();
+  }, [id]);
 
   const handleCancelAppointment = () => {
     console.log('🔵 [Cancel] Button clicked!');

@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  TouchableOpacity,
+  Pressable,
   Text,
   ActivityIndicator,
   ViewStyle,
@@ -116,14 +116,16 @@ export function Button({
   };
 
   return (
-    <TouchableOpacity
-      style={getButtonStyle()}
+    <Pressable
+      style={({ pressed }) => ({
+        ...getButtonStyle(),
+        ...(pressed && !isDisabled ? { opacity: 0.8 } : {}),
+      })}
       onPress={onPress}
       disabled={isDisabled}
       accessibilityLabel={accessibilityLabel || title}
       accessibilityRole="button"
       accessibilityState={{ disabled: isDisabled }}
-      activeOpacity={0.8}
     >
       {loading && (
         <ActivityIndicator
@@ -135,6 +137,6 @@ export function Button({
       <Text style={getTextStyle()}>
         {loading ? 'Loading...' : title}
       </Text>
-    </TouchableOpacity>
+    </Pressable>
   );
 }

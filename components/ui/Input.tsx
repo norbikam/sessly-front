@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { forwardRef, useState } from 'react';
 import {
   View,
   TextInput,
@@ -9,6 +9,7 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import Colors from '../../constants/Colors';
 
 interface InputProps extends TextInputProps {
   label?: string;
@@ -17,92 +18,83 @@ interface InputProps extends TextInputProps {
   isPassword?: boolean;
 }
 
-export function Input({
-  label,
-  error,
-  icon,
-  isPassword = false,
-  style,
-  ...props
-}: InputProps) {
+export const Input = forwardRef<TextInput, InputProps>(function Input(
+  {
+    label,
+    error,
+    icon,
+    isPassword = false,
+    style,
+    onFocus,
+    onBlur,
+    ...props
+  },
+  ref,
+) {
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
-  const inputRef = useRef<TextInput | null>(null);
-  const lastFocusAt = useRef<number>(0);
-  const isProgrammaticRefocus = useRef(false);
 
   return (
     <View style={styles.container}>
-      {label && <Text style={styles.label}>{label}</Text>}
-      
-      <View style={[
-        styles.inputContainer,
-        isFocused && styles.inputContainerFocused,
-        error && styles.inputContainerError,
-      ]}>
-        {icon && (
+      {label ? <Text style={styles.label}>{label}</Text> : null}
+
+      <View
+        style={[
+          styles.inputContainer,
+          isFocused && styles.inputContainerFocused,
+          error ? styles.inputContainerError : null,
+        ]}
+      >
+        {icon ? (
           <Ionicons
             name={icon}
             size={20}
-            color={error ? '#FF3B30' : isFocused ? '#FF6B35' : '#999'}
+            color={error ? '#EF4444' : isFocused ? Colors.light.accent : '#94A3B8'}
             style={styles.icon}
           />
-        )}
-        
+        ) : null}
+
         <TextInput
-          ref={inputRef}
+          ref={ref}
           style={[styles.input, style]}
-          placeholderTextColor="#999"
+          placeholderTextColor="#94A3B8"
           secureTextEntry={isPassword && !isPasswordVisible}
-          onFocus={() => {
-            // ignore duplicate focus events
-            if (isFocused) return;
-            // if this focus was triggered by our programmatic refocus, accept and clear flag
-            if (isProgrammaticRefocus.current) {
-              isProgrammaticRefocus.current = false;
-            }
-            lastFocusAt.current = Date.now();
-            setIsFocused(true);
-          }}
-          onBlur={() => {
-            const now = Date.now();
-            const delta = now - (lastFocusAt.current || 0);
-            // if blur happens immediately after focus, refocus once (workaround)
-            if (delta < 120 && !isProgrammaticRefocus.current) {
-              isProgrammaticRefocus.current = true;
-              setTimeout(() => inputRef.current?.focus(), 60);
-              return;
-            }
-            setIsFocused(false);
-          }}
-          autoComplete='off' autoCorrect={false} textContentType={isPassword ? 'none' : undefined}
-          importantForAutofill='no'
+          autoCorrect={false}
           {...props}
+          onFocus={(event) => {
+            setIsFocused(true);
+            onFocus?.(event);
+          }}
+          onBlur={(event) => {
+            setIsFocused(false);
+            onBlur?.(event);
+          }}
         />
-        
-        {isPassword && (
+
+        {isPassword ? (
           <TouchableOpacity
-            onPress={() => setIsPasswordVisible(!isPasswordVisible)}
+            onPress={() => setIsPasswordVisible((current) => !current)}
             style={styles.eyeIcon}
+            hitSlop={8}
           >
             <Ionicons
               name={isPasswordVisible ? 'eye-outline' : 'eye-off-outline'}
               size={20}
-              color={isFocused ? '#FF6B35' : '#999'}
+              color={isFocused ? Colors.light.accent : '#94A3B8'}
             />
           </TouchableOpacity>
-        )}
+        ) : null}
       </View>
-      
-      {error && (
+
+      {error ? (
         <View style={styles.errorContainer}>
-          <Ionicons name="alert-circle" size={14} color="#FF3B30" />
+          <Ionicons name="alert-circle" size={14} color="#EF4444" />
           <Text style={styles.errorText}>{error}</Text>
         </View>
-      )}
+      ) : null}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -111,41 +103,35 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#333',
+    color: '#334155',
     marginBottom: 8,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#F8FAFC',
     borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#F0F0F0',
-    paddingHorizontal: 16,
-    height: 52,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 14,
+    minHeight: 52,
   },
   inputContainerFocused: {
-    borderColor: '#FF6B35',
-    backgroundColor: '#FFF',
-    shadowColor: '#FF6B35',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    borderColor: Colors.light.accent,
+    backgroundColor: '#fff',
   },
   inputContainerError: {
-    borderColor: '#FF3B30',
-    backgroundColor: '#FFF5F5',
+    borderColor: '#EF4444',
+    backgroundColor: '#FEF2F2',
   },
   icon: {
-    marginRight: 12,
+    marginRight: 10,
   },
   input: {
     flex: 1,
     fontSize: 16,
-    color: '#333',
-    minHeight: 52,
-    paddingVertical: Platform.OS === 'ios' ? 16 : 12,
+    color: '#1E293B',
+    paddingVertical: Platform.OS === 'ios' ? 14 : 10,
   },
   eyeIcon: {
     padding: 4,
@@ -159,7 +145,7 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: 12,
-    color: '#FF3B30',
+    color: '#EF4444',
     marginLeft: 4,
   },
 });

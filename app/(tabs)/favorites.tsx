@@ -73,8 +73,13 @@ export default function FavoritesScreen() {
   };
 
   const renderFavoriteCard = ({ item }: { item: Business }) => {
-    const imageUrl = `https://picsum.photos/seed/${item.id}/600/400`; // Placeholder
+    const imageUrl =
+      item.cover_image ||
+      item.logo_url ||
+      (item as any).logo ||
+      null;
     const address = formatAddress(item);
+    const initial = (item.name || '?').trim().charAt(0).toUpperCase();
 
     return (
       <TouchableOpacity 
@@ -84,12 +89,18 @@ export default function FavoritesScreen() {
       >
         <View style={styles.card}>
           <View style={styles.imageContainer}>
-            <Image
-              source={{ uri: imageUrl }}
-              style={styles.businessImage}
-              contentFit="cover"
-              transition={300}
-            />
+            {imageUrl ? (
+              <Image
+                source={{ uri: imageUrl }}
+                style={styles.businessImage}
+                contentFit="cover"
+                transition={300}
+              />
+            ) : (
+              <View style={styles.imageFallback}>
+                <Text style={styles.imageFallbackText}>{initial}</Text>
+              </View>
+            )}
             <LinearGradient
               colors={['transparent', 'rgba(0,0,0,0.8)']}
               style={styles.imageGradient}
@@ -247,6 +258,18 @@ const styles = StyleSheet.create({
   businessImage: {
     width: '100%',
     height: '100%',
+  },
+  imageFallback: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#8B5CF6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  imageFallbackText: {
+    fontSize: 56,
+    fontWeight: '900',
+    color: '#fff',
   },
   imageGradient: {
     position: 'absolute',

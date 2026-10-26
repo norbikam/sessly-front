@@ -1,21 +1,27 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, ActivityIndicator, 
   TouchableOpacity, Platform, Dimensions, Linking, Alert, Share,
-  Animated, Pressable
+  Animated, Pressable, TextInput
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Image } from 'expo-image';
 import Colors from '../../constants/Colors';
-import { getBusinessDetail } from '../../api/business';
+import { addBusinessReview, getBusinessDetail, getBusinessReviews, updateBusinessReview } from '../../api/business';
 // ✅ IMPORTUJEMY FUNKCJĘ TWORZENIA WIZYTY
 import { createAppointment } from '../../api/appointments'; 
 import { useAuth } from '../../contexts/AuthContext';
 import { useFavorites } from '../../contexts/FavoritesContext';
+import { useLocale } from '../../contexts/LocaleContext';
 import BookingModal from '../../components/booking/BookingModal';
 import OpeningHoursCard from '../../components/business/OpeningHoursCard';
-import { Business, Service } from '../../types/api';
+import { Business, Review, Service } from '../../types/api';
+import { formatMoney, formatServicePrice, getServicePrice } from '../../utils/currency';
+import { localizedDescription, localizedName } from '../../utils/localized';
+import { notify } from '../../utils/notify';
+import { getFollowing, toggleFollowing } from '../../api/following';
 
 const { width } = Dimensions.get('window');
 const isWeb = Platform.OS === 'web' && width > 768;
@@ -42,21 +48,37 @@ function AnimatedHeart({ isFavorite, onPress }: { isFavorite: boolean; onPress: 
 export default function BusinessDetailScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn, user } = useAuth();
+  const { currency, language, t } = useLocale();
   const { isFavorite, toggleFavorite } = useFavorites();
   
   const [business, setBusiness] = useState<Business | null>(null);
   const [loading, setLoading] = useState(true);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState('');
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [editingReview, setEditingReview] = useState<Review | null>(null);
+  const [following, setFollowing] = useState(false);
+  const [changingFollowing, setChangingFollowing] = useState(false);
   
   // Booking State
   const [selectedService, setSelectedService] = useState<Service | null>(null);
+  const [cart, setCart] = useState<Service[]>([]);
+  const cartServiceIds = useMemo(() => cart.map((item) => String(item.id)), [cart]);
   const [showBookingModal, setShowBookingModal] = useState(false);
+  const canBook = user?.role === 'customer';
 
   useEffect(() => {
     const loadBusiness = async () => {
       try {
         const data = await getBusinessDetail(String(id));
         setBusiness(data);
+        setReviews(await getBusinessReviews(data.slug));
+        if (isLoggedIn && user?.role === 'customer') {
+          const followed = await getFollowing();
+          setFollowing(followed.some((item) => String(item.id) === String(data.id)));
+        }
       } catch (error) {
         console.error(error);
       } finally {
@@ -64,9 +86,66 @@ export default function BusinessDetailScreen() {
       }
     };
     if (id) loadBusiness();
-  }, [id]);
+  }, [id, isLoggedIn, user?.role]);
+
+  const handleFollowing = async () => {
+    if (!business) return;
+    if (!isLoggedIn) {
+      router.push('/(auth)/login');
+      return;
+    }
+    try {
+      setChangingFollowing(true);
+      const result = await toggleFollowing(String(business.id));
+      setFollowing(result.is_following);
+      notify(
+        result.is_following ? t('business.followOn') : t('business.followOff'),
+        result.is_following ? t('business.followOnHint') : t('business.followOffHint'),
+      );
+    } catch {
+      notify(t('common.error'), t('business.followError'));
+    } finally {
+      setChangingFollowing(false);
+    }
+  };
+
+  const handleReviewSubmit = async () => {
+    if (!business) return;
+    try {
+      setSubmittingReview(true);
+      if (editingReview) {
+        const review = await updateBusinessReview(business.slug, editingReview.id, {
+          rating: reviewRating,
+          comment: reviewComment.trim(),
+        });
+        setReviews((current) => current.map((item) => item.id === review.id ? review : item));
+        setEditingReview(null);
+        notify('Zapisano', 'Twoja opinia została zaktualizowana.');
+      } else {
+        const review = await addBusinessReview(business.slug, {
+          rating: reviewRating,
+          comment: reviewComment.trim(),
+        });
+        setReviews((current) => [review, ...current]);
+        setBusiness({ ...business, can_review: false });
+        notify('Dziękujemy', 'Twoja opinia została dodana.');
+      }
+      setReviewComment('');
+    } catch (error: any) {
+      notify(
+        'Nie udało się zapisać opinii',
+        error?.response?.data?.error?.message || error?.response?.data?.detail || error?.message
+      );
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
 
   const handleBook = (service: Service) => {
+    if (!canBook) {
+      notify('Konto firmowe', 'Właściciel i pracownik nie mogą rezerwować wizyt.');
+      return;
+    }
     if (!isLoggedIn) {
       Alert.alert('Wymagane logowanie', 'Musisz być zalogowany, aby zarezerwować termin.', [
         { text: 'Anuluj', style: 'cancel' },
@@ -74,12 +153,22 @@ export default function BusinessDetailScreen() {
       ]);
       return;
     }
-    setSelectedService(service);
+    setCart((prev) => {
+      if (prev.some((item) => String(item.id) === String(service.id))) {
+        return prev.filter((item) => String(item.id) !== String(service.id));
+      }
+      return [...prev, service];
+    });
+  };
+
+  const openCartBooking = () => {
+    if (!cart.length) return;
+    setSelectedService(cart[0]);
     setShowBookingModal(true);
   };
 
   // ✅ PODPIĘTE PRAWDZIWE API REZERWACJI
-  const handleBookingConfirm = async (date: string, time: string) => {
+  const handleBookingConfirm = async (date: string, time: string, staffId?: string) => {
     if (!business || !selectedService) return;
 
     try {
@@ -87,26 +176,48 @@ export default function BusinessDetailScreen() {
       
       // Wysyłamy prośbę o rezerwację do Django
       await createAppointment(businessSlug, {
-        service_id: String(selectedService.id),
+        service_ids: cart.map((item) => String(item.id)),
         date: date,
         start_time: time,
+        staff_id: staffId,
       });
 
       // Zamykamy modal przed wyskoczeniem alertu, żeby się nie zablokował
       setShowBookingModal(false);
+      setCart([]);
 
       // Dodajemy małe opóźnienie na Alert, by Modal zdążył zniknąć (głównie dla iOS)
       setTimeout(() => {
         Alert.alert(
-          'Rezerwacja Potwierdzona! 🎉', 
-          `Twoja wizyta na "${selectedService?.name}" została pomyślnie zapisana na ${date} o ${time}.`
+          'Rezerwacja wysłana',
+          `Wizyta (${cart.length || 1} usług) została zapisana na ${date} o ${time}. Czeka na zatwierdzenie.`
         );
       }, 300);
 
     } catch (error: any) {
       setShowBookingModal(false);
+      const code = error?.response?.data?.error?.code || error?.code;
+      const message = error?.message || 'Nie udało się zarezerwować wizyty. Spróbuj ponownie.';
       setTimeout(() => {
-        Alert.alert('Błąd', error.message || 'Nie udało się zarezerwować wizyty. Spróbuj ponownie.');
+        if (code === 'EMAIL_NOT_VERIFIED') {
+          Alert.alert(
+            'Potwierdź e-mail',
+            'Żeby umówić wizytę, potwierdź adres e-mail (link w wiadomości).',
+            [
+              { text: 'Anuluj', style: 'cancel' },
+              {
+                text: 'Potwierdź teraz',
+                onPress: () =>
+                  router.push({
+                    pathname: '/(auth)/verify-email',
+                    params: { email: user?.email || '' },
+                  } as any),
+              },
+            ],
+          );
+          return;
+        }
+        Alert.alert('Błąd', message);
       }, 300);
     }
   };
@@ -146,7 +257,7 @@ export default function BusinessDetailScreen() {
   const services = (business as any).services || [];
   const hours = (business as any).opening_hours || [];
   const address = `${business.address_line1 || ''}, ${(business as any).city || ''}`.replace(/^,\s*/, '').replace(/,\s*$/, '');
-  const businessId = business.slug || String(business.id);
+  const businessId = String(business.id);
   const favorite = isFavorite(businessId);
 
   return (
@@ -174,8 +285,16 @@ export default function BusinessDetailScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Zdjęcie w tle */}
-        <View style={styles.coverImage}>
-          <Ionicons name="storefront" size={80} color="rgba(255,255,255,0.4)" />
+        <View style={[styles.coverImage, { backgroundColor: business.brand_color || '#B8A3E0' }]}>
+          {business.cover_image || business.images?.[0]?.url || business.logo_url ? (
+            <Image
+              source={{ uri: business.cover_image || business.images?.[0]?.url || business.logo_url }}
+              style={StyleSheet.absoluteFill}
+              contentFit="cover"
+            />
+          ) : (
+            <Ionicons name="storefront" size={80} color="rgba(255,255,255,0.4)" />
+          )}
           <LinearGradient
             colors={['transparent', 'rgba(0,0,0,0.6)']}
             style={styles.imageGradient}
@@ -193,10 +312,22 @@ export default function BusinessDetailScreen() {
           ) : null}
 
           <View style={styles.actionRow}>
+            {canBook ? (
+              <TouchableOpacity
+                style={[styles.actionBtn, following && { backgroundColor: Colors.light.accent }]}
+                onPress={handleFollowing}
+                disabled={changingFollowing}
+              >
+                {changingFollowing
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <Ionicons name={following ? 'notifications' : 'notifications-outline'} size={18} color="#fff" />}
+                <Text style={styles.actionBtnText} numberOfLines={1}>{following ? t('business.following') : t('business.follow')}</Text>
+              </TouchableOpacity>
+            ) : null}
             {business.phone_number && (
               <TouchableOpacity style={styles.actionBtn} onPress={() => Linking.openURL(`tel:${business.phone_number}`)}>
-                <Ionicons name="call-outline" size={20} color="#fff" />
-                <Text style={styles.actionBtnText}>Zadzwoń</Text>
+                <Ionicons name="call-outline" size={18} color="#fff" />
+                <Text style={styles.actionBtnText} numberOfLines={1}>{t('business.call')}</Text>
               </TouchableOpacity>
             )}
             
@@ -204,8 +335,8 @@ export default function BusinessDetailScreen() {
               style={[styles.actionBtn, { backgroundColor: '#F5F3FF' }]} 
               onPress={() => Linking.openURL(`http://maps.apple.com/?q=${encodeURIComponent(address || business.name)}`)}
             >
-              <Ionicons name="map-outline" size={20} color={Colors.light.accent} />
-              <Text style={[styles.actionBtnText, { color: Colors.light.accent }]}>Trasa</Text>
+              <Ionicons name="map-outline" size={18} color={Colors.light.accent} />
+              <Text style={[styles.actionBtnText, { color: Colors.light.accent }]} numberOfLines={1}>{t('business.directions')}</Text>
             </TouchableOpacity>
 
             {(business as any).website_url && (
@@ -213,19 +344,31 @@ export default function BusinessDetailScreen() {
                 style={[styles.actionBtn, { backgroundColor: '#F5F3FF' }]} 
                 onPress={() => Linking.openURL((business as any).website_url)}
               >
-                <Ionicons name="globe-outline" size={20} color={Colors.light.accent} />
-                <Text style={[styles.actionBtnText, { color: Colors.light.accent }]}>WWW</Text>
+                <Ionicons name="globe-outline" size={18} color={Colors.light.accent} />
+                <Text style={[styles.actionBtnText, { color: Colors.light.accent }]} numberOfLines={1}>WWW</Text>
               </TouchableOpacity>
             )}
           </View>
 
-          {business.description && (
+          {localizedDescription(business, language) ? (
             <View style={styles.descSection}>
-              <Text style={styles.sectionTitle}>O firmie</Text>
-              <Text style={styles.descText}>{business.description}</Text>
+              <Text style={styles.sectionTitle}>{t('business.about')}</Text>
+              <Text style={styles.descText}>{localizedDescription(business, language)}</Text>
             </View>
-          )}
+          ) : null}
+
         </View>
+
+        {business.images && business.images.length > 1 ? (
+          <View style={[styles.gallerySection, isWeb && styles.webCard]}>
+            <Text style={styles.sectionTitle}>{t('business.gallery')}</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.galleryRow}>
+              {business.images.map((image) => (
+                <Image key={image.id} source={{ uri: image.url }} style={styles.galleryImage} contentFit="cover" />
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
 
         {hours.length > 0 && (
           <View style={[styles.hoursSection, isWeb && styles.webCard]}>
@@ -235,47 +378,131 @@ export default function BusinessDetailScreen() {
 
         {/* Sekcja Usług */}
         <View style={[styles.servicesSection, isWeb && styles.webCard]}>
-          <Text style={styles.sectionTitle}>Wybierz usługę</Text>
+          <Text style={styles.sectionTitle}>{t('booking.selectService')}</Text>
           
           {services.length === 0 ? (
             <View style={styles.emptyServices}>
               <Ionicons name="cut-outline" size={40} color="#CBD5E1" />
-              <Text style={styles.descText}>Brak dodanych usług.</Text>
+              <Text style={styles.descText}>{t('booking.noServices')}</Text>
             </View>
           ) : (
-            services.map((service: Service) => (
+            services.map((service: Service) => {
+              const inCart = cart.some((item) => String(item.id) === String(service.id));
+              const promotionActive = Boolean(
+                service.promotional_price_amount
+                && (!service.promotion_valid_until || new Date(service.promotion_valid_until) >= new Date())
+              );
+              return (
               <TouchableOpacity 
                 key={service.id} 
-                style={styles.serviceItem}
+                style={[styles.serviceItem, inCart && styles.serviceItemActive]}
                 onPress={() => handleBook(service)}
                 activeOpacity={0.7}
+                disabled={!canBook}
               >
                 <View style={styles.serviceDetails}>
-                  <Text style={styles.serviceName}>{service.name}</Text>
-                  {service.description && (
-                    <Text style={styles.serviceDesc} numberOfLines={2}>{service.description}</Text>
-                  )}
+                  <Text style={styles.serviceName}>{localizedName(service, language)}</Text>
+                  {localizedDescription(service, language) ? (
+                    <Text style={styles.serviceDesc} numberOfLines={2}>{localizedDescription(service, language)}</Text>
+                  ) : null}
                   <View style={styles.serviceMeta}>
-                    <Text style={styles.servicePrice}>{(service as any).price_amount || '0.00'} zł</Text>
+                    <Text style={styles.servicePrice}>
+                      {formatServicePrice(service, currency)}
+                    </Text>
+                    {promotionActive ? (
+                      <Text style={styles.regularPrice}>
+                        {formatMoney(getServicePrice(service, currency, { preferPromo: false }), currency)}
+                      </Text>
+                    ) : null}
                     <View style={styles.dot} />
                     <Text style={styles.serviceDuration}>{(service as any).duration_minutes || 60} min</Text>
                   </View>
                 </View>
                 
-                <View style={styles.bookBtn}>
-                  <Text style={styles.bookBtnText}>Rezerwuj</Text>
-                </View>
+                {canBook ? (
+                  <View style={[styles.bookBtn, inCart && styles.bookBtnActive]}>
+                    <Text style={[styles.bookBtnText, inCart && { color: '#fff' }]}>{inCart ? t('booking.inCart') : t('booking.add')}</Text>
+                  </View>
+                ) : null}
               </TouchableOpacity>
-            ))
+            );
+            })
           )}
+        </View>
+
+        <View style={[styles.reviewsSection, isWeb && styles.webCard]}>
+          <Text style={styles.sectionTitle}>{t('business.reviewsCount', undefined, { count: reviews.length })}</Text>
+          {(business.can_review && isLoggedIn) || editingReview ? (
+            <View style={styles.reviewForm}>
+              <Text style={styles.reviewFormTitle}>{editingReview ? t('business.editReview') : t('business.addReview')}</Text>
+              <View style={styles.starsRow}>
+                {[1, 2, 3, 4, 5].map((rating) => (
+                  <TouchableOpacity key={rating} onPress={() => setReviewRating(rating)}>
+                    <Ionicons name={rating <= reviewRating ? 'star' : 'star-outline'} size={28} color="#F59E0B" />
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <TextInput
+                style={styles.reviewInput}
+                value={reviewComment}
+                onChangeText={setReviewComment}
+                placeholder={t('business.reviewPlaceholder')}
+                multiline
+              />
+              <TouchableOpacity style={styles.reviewButton} onPress={handleReviewSubmit} disabled={submittingReview}>
+                {submittingReview ? <ActivityIndicator color="#fff" /> : <Text style={styles.reviewButtonText}>{editingReview ? t('business.saveReview') : t('business.addReview')}</Text>}
+              </TouchableOpacity>
+              {editingReview ? (
+                <TouchableOpacity onPress={() => { setEditingReview(null); setReviewComment(''); }}>
+                  <Text style={styles.cancelEdit}>{t('business.cancelEdit')}</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          ) : null}
+          {reviews.length ? reviews.map((review) => (
+            <View key={review.id} style={styles.reviewItem}>
+              <View style={styles.reviewHeader}>
+                <Text style={styles.reviewAuthor}>{review.customer_first_name || review.customer_username}</Text>
+                <Text style={styles.reviewStars}>{'★'.repeat(review.rating)}{'☆'.repeat(5 - review.rating)}</Text>
+              </View>
+              {(review.localized_comment || review.comment) ? (
+                <Text style={styles.reviewText}>{review.localized_comment || review.comment}</Text>
+              ) : null}
+              {review.is_own ? (
+                <TouchableOpacity
+                  style={styles.editReviewBtn}
+                  onPress={() => {
+                    setEditingReview(review);
+                    setReviewRating(review.rating);
+                    setReviewComment(review.comment || '');
+                  }}
+                >
+                  <Text style={styles.editReviewText}>{t('business.editReviewAction')}</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          )) : <Text style={styles.descText}>{t('business.noReviews')}</Text>}
         </View>
       </ScrollView>
 
-      {showBookingModal && selectedService && (
+      {canBook && cart.length > 0 && (
+        <TouchableOpacity style={styles.cartBar} onPress={openCartBooking}>
+          <Text style={styles.cartBarText}>
+            {t('business.bookServices', undefined, {
+              count: cart.length,
+              label: cart.length === 1 ? t('business.serviceSingular') : t('business.servicePlural'),
+              minutes: cart.reduce((sum, item) => sum + (item.duration_minutes || 0), 0),
+            })}
+          </Text>
+        </TouchableOpacity>
+      )}
+
+      {canBook && showBookingModal && selectedService && (
         <BookingModal
           visible={showBookingModal}
           onClose={() => setShowBookingModal(false)}
           service={selectedService as any}
+          serviceIds={cartServiceIds}
           business={business as any}
           onConfirm={handleBookingConfirm}
         />
@@ -298,7 +525,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: { paddingBottom: 80 },
   webScrollContent: { maxWidth: 800, alignSelf: 'center', width: '100%' },
-  coverImage: { height: 280, backgroundColor: '#B8A3E0', justifyContent: 'center', alignItems: 'center', position: 'relative' },
+  coverImage: { height: 280, backgroundColor: '#B8A3E0', justifyContent: 'center', alignItems: 'center', position: 'relative', overflow: 'hidden' },
   imageGradient: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 120 },
   mainInfoCard: {
     backgroundColor: '#fff', borderTopLeftRadius: 32, borderTopRightRadius: 32,
@@ -308,15 +535,31 @@ const styles = StyleSheet.create({
   title: { fontSize: 28, fontWeight: '900', color: Colors.light.text, marginBottom: 8 },
   infoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 6 },
   infoText: { fontSize: 15, color: Colors.light.textSecondary, flex: 1, fontWeight: '500' },
-  actionRow: { flexDirection: 'row', gap: 12, marginBottom: 24 },
+  actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 24 },
   actionBtn: {
-    flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
-    paddingVertical: 14, borderRadius: 16, backgroundColor: Colors.light.accent, gap: 8
+    width: '48%',
+    minHeight: 52,
+    flexDirection: 'column',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 16,
+    backgroundColor: Colors.light.accent,
+    gap: 4,
   },
-  actionBtnText: { color: '#fff', fontWeight: '800', fontSize: 14 },
+  actionBtnText: { color: '#fff', fontWeight: '800', fontSize: 12 },
   descSection: { paddingTop: 24, borderTopWidth: 1, borderTopColor: Colors.light.border },
+  promotionBox: { flexDirection: 'row', gap: 12, borderWidth: 1, borderRadius: 16, padding: 16, backgroundColor: '#FAF8FF' },
+  promotionContent: { flex: 1 },
+  promotionTitle: { color: Colors.light.text, fontSize: 16, fontWeight: '800', marginBottom: 4 },
+  promotionText: { color: Colors.light.textSecondary, lineHeight: 20 },
+  promotionDate: { color: Colors.light.accent, fontSize: 12, fontWeight: '700', marginTop: 6 },
   sectionTitle: { fontSize: 20, fontWeight: '800', color: Colors.light.text, marginBottom: 16 },
   descText: { fontSize: 15, lineHeight: 24, color: Colors.light.textSecondary },
+  gallerySection: { backgroundColor: '#fff', marginTop: 12, paddingVertical: 24, ...Colors.shadows.sm },
+  galleryRow: { gap: 12, paddingHorizontal: 24 },
+  galleryImage: { width: 220, height: 150, borderRadius: 16, backgroundColor: '#EDE9FE' },
   hoursSection: { backgroundColor: '#fff', marginTop: 12, padding: 24, ...Colors.shadows.sm },
   servicesSection: { backgroundColor: '#fff', marginTop: 12, padding: 24, ...Colors.shadows.sm },
   emptyServices: { alignItems: 'center', paddingVertical: 40, gap: 10 },
@@ -329,6 +572,7 @@ const styles = StyleSheet.create({
   serviceDesc: { fontSize: 13, color: Colors.light.textSecondary, marginBottom: 10, lineHeight: 18 },
   serviceMeta: { flexDirection: 'row', alignItems: 'center' },
   servicePrice: { fontSize: 15, fontWeight: '800', color: Colors.light.accent },
+  regularPrice: { marginLeft: 7, fontSize: 12, color: '#94A3B8', textDecorationLine: 'line-through' },
   dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#D1D5DB', marginHorizontal: 8 },
   serviceDuration: { fontSize: 14, color: Colors.light.textSecondary, fontWeight: '500' },
   bookBtn: {
@@ -336,6 +580,34 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: '#EDE9FE'
   },
   bookBtnText: { color: Colors.light.accent, fontWeight: '800', fontSize: 14 },
+  serviceItemActive: { backgroundColor: '#F5F3FF', marginHorizontal: -8, paddingHorizontal: 8, borderRadius: 12 },
+  bookBtnActive: { backgroundColor: Colors.light.accent, borderColor: Colors.light.accent },
+  reviewsSection: { backgroundColor: '#fff', marginTop: 12, padding: 24, ...Colors.shadows.sm },
+  reviewForm: { padding: 16, borderRadius: 16, backgroundColor: '#FAF8FF', marginBottom: 20 },
+  starsRow: { flexDirection: 'row', gap: 6, marginBottom: 12 },
+  reviewInput: { minHeight: 80, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, backgroundColor: '#fff', padding: 12, textAlignVertical: 'top' },
+  reviewButton: { marginTop: 12, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.light.accent },
+  reviewButtonText: { color: '#fff', fontWeight: '800' },
+  reviewFormTitle: { fontSize: 14, fontWeight: '800', color: Colors.light.text, marginBottom: 8 },
+  cancelEdit: { textAlign: 'center', color: '#DC2626', fontWeight: '700', marginTop: 10 },
+  editReviewBtn: { marginTop: 8, alignSelf: 'flex-start' },
+  editReviewText: { color: Colors.light.accent, fontWeight: '800', fontSize: 13 },
+  reviewItem: { paddingVertical: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E5E7EB' },
+  reviewHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  reviewAuthor: { flex: 1, color: Colors.light.text, fontWeight: '800' },
+  reviewStars: { color: '#F59E0B', fontSize: 16 },
+  reviewText: { color: Colors.light.textSecondary, lineHeight: 21, marginTop: 8 },
+  cartBar: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 24,
+    backgroundColor: Colors.light.accent,
+    borderRadius: 16,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  cartBarText: { color: '#fff', fontWeight: '800', fontSize: 16 },
   backBtn: { marginTop: 20, backgroundColor: Colors.light.accent, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 12 },
   backBtnText: { color: '#fff', fontWeight: '700' },
   errorText: { fontSize: 18, color: Colors.light.textSecondary, marginTop: 16, fontWeight: '600' }

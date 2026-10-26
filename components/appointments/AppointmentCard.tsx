@@ -12,6 +12,8 @@ export const getStatusInfo = (status: string) => {
       return { label: 'Oczekująca', color: '#f59e0b', bg: '#fef3c7' };
     case 'cancelled':
       return { label: 'Anulowana', color: '#ef4444', bg: '#fee2e2' };
+    case 'completed':
+      return { label: 'Zakończona', color: '#6b7280', bg: '#f3f4f6' };
     default:
       return { label: status, color: '#6b7280', bg: '#f3f4f6' };
   }
@@ -20,21 +22,31 @@ export const getStatusInfo = (status: string) => {
 interface AppointmentCardProps {
   appointment: Appointment;
   onCancel: (id: string) => void;
+  onReschedule: (appointment: Appointment) => void;
+  onPayDeposit?: (appointment: Appointment) => void;
   onBusinessPress: (slug: string) => void;
 }
 
-export default function AppointmentCard({ appointment, onCancel, onBusinessPress }: AppointmentCardProps) {
+export default function AppointmentCard({
+  appointment,
+  onCancel,
+  onReschedule,
+  onPayDeposit,
+  onBusinessPress,
+}: AppointmentCardProps) {
   const statusInfo = getStatusInfo(appointment.status || 'pending');
-  
-  // 1. Definiujemy datę wizyty i obecny czas
   const startDate = appointment.start ? new Date(appointment.start) : null;
   const now = new Date();
-  
-  // 2. Sprawdzamy czy wizyta jest w przyszłości
   const isFuture = startDate ? startDate > now : false;
+  const policyAllows =
+    typeof appointment.can_change === 'boolean'
+      ? appointment.can_change
+      : isFuture &&
+        (appointment.status === 'confirmed' || appointment.status === 'pending');
 
-  // 3. ✅ POPRAWKA: Można anulować tylko jeśli status pozwala ORAZ wizyta jest w przyszłości
-  const canCancel = (appointment.status === 'confirmed' || appointment.status === 'pending') && isFuture;
+  const canChange =
+    (appointment.status === 'confirmed' || appointment.status === 'pending') &&
+    policyAllows;
 
   const formattedDate = startDate
     ? startDate.toLocaleString('pl-PL', {
@@ -46,19 +58,40 @@ export default function AppointmentCard({ appointment, onCancel, onBusinessPress
       })
     : 'Termin nieustalony';
 
-  const businessName = typeof appointment.business === 'string' 
-    ? appointment.business 
-    : (appointment.business as any)?.name || 'Firma';
+  const businessName =
+    appointment.business_name ||
+    (typeof appointment.business === 'string'
+      ? appointment.business
+      : (appointment.business as any)?.name || 'Firma');
 
-  const businessSlug = typeof appointment.business === 'string'
-    ? appointment.business
-    : (appointment.business as any)?.slug || String(appointment.business);
+  const businessSlug =
+    typeof appointment.business === 'string'
+      ? appointment.business
+      : (appointment.business as any)?.slug || String(appointment.business);
 
-  const duration = (appointment.service as any)?.duration_minutes || appointment.service?.duration_minutes || 0;
+  const duration =
+    (appointment.service as any)?.duration_minutes ||
+    appointment.service?.duration_minutes ||
+    0;
+
+  const minHours = appointment.change_min_hours ?? 2;
+  const showPolicyHint =
+    isFuture &&
+    (appointment.status === 'confirmed' || appointment.status === 'pending') &&
+    !canChange &&
+    Boolean(appointment.change_blocked_reason);
+
+  const needsDeposit =
+    appointment.deposit_status === 'pending' &&
+    appointment.deposit_amount != null &&
+    Number(appointment.deposit_amount) > 0;
+
+  const depositLabel = needsDeposit
+    ? `Opłać zaliczkę ${appointment.deposit_amount} ${appointment.deposit_currency || 'PLN'}`
+    : '';
 
   return (
     <View style={styles.card}>
-      {/* Header */}
       <View style={styles.cardHeader}>
         <View style={styles.serviceInfo}>
           <Text style={styles.serviceName} numberOfLines={1}>
@@ -72,8 +105,7 @@ export default function AppointmentCard({ appointment, onCancel, onBusinessPress
         </View>
       </View>
 
-      {/* Business */}
-      {appointment.business && (
+      {appointment.business ? (
         <TouchableOpacity
           style={styles.businessRow}
           onPress={() => onBusinessPress(businessSlug)}
@@ -84,40 +116,66 @@ export default function AppointmentCard({ appointment, onCancel, onBusinessPress
           </Text>
           <Ionicons name="chevron-forward" size={16} color="#ccc" />
         </TouchableOpacity>
-      )}
+      ) : null}
 
-      {/* Date & Time */}
       <View style={styles.detailRow}>
         <Ionicons name="calendar-outline" size={18} color="#666" />
         <Text style={styles.detailText}>{formattedDate}</Text>
       </View>
 
-      {/* Service Duration */}
-      {duration > 0 && (
+      {duration > 0 ? (
         <View style={styles.detailRow}>
           <Ionicons name="time-outline" size={18} color="#666" />
-          <Text style={styles.detailText}>{duration} min</Text>
+          <Text style={styles.detailText}>{`${duration} min`}</Text>
         </View>
-      )}
+      ) : null}
 
-      {/* Notes */}
-      {appointment.notes && (
+      {appointment.notes ? (
         <View style={styles.notesContainer}>
           <Text style={styles.notesLabel}>Notatki:</Text>
           <Text style={styles.notesText}>{appointment.notes}</Text>
         </View>
-      )}
+      ) : null}
 
-      {/* Cancel Button - teraz bezpieczny! */}
-      {canCancel && (
+      {showPolicyHint ? (
+        <Text style={styles.policyHint}>
+          {appointment.change_blocked_reason ||
+            `Zmiany możliwe najpóźniej ${minHours} h przed wizytą.`}
+        </Text>
+      ) : null}
+
+      {needsDeposit && onPayDeposit ? (
         <TouchableOpacity
-          style={styles.cancelButton}
-          onPress={() => onCancel(appointment.id)}
+          style={styles.payButton}
+          onPress={() => onPayDeposit(appointment)}
         >
-          <Ionicons name="close-circle-outline" size={20} color="#ef4444" />
-          <Text style={styles.cancelButtonText}>Anuluj wizytę</Text>
+          <Ionicons name="card-outline" size={18} color="#fff" />
+          <Text style={styles.payButtonText}>{depositLabel}</Text>
         </TouchableOpacity>
-      )}
+      ) : null}
+
+      {appointment.deposit_status === 'paid' ? (
+        <Text style={styles.paidHint}>Zaliczka opłacona</Text>
+      ) : null}
+
+      {canChange ? (
+        <View style={styles.actions}>
+          <TouchableOpacity
+            style={styles.rescheduleButton}
+            onPress={() => onReschedule(appointment)}
+          >
+            <Ionicons name="calendar-outline" size={18} color={Colors.accent} />
+            <Text style={styles.rescheduleButtonText}>Zmień termin</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.cancelButton}
+            onPress={() => onCancel(appointment.id)}
+          >
+            <Ionicons name="close-circle-outline" size={18} color="#ef4444" />
+            <Text style={styles.cancelButtonText}>Anuluj</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -202,18 +260,65 @@ const styles = StyleSheet.create({
     color: '#333',
     lineHeight: 20,
   },
-  cancelButton: {
+  policyHint: {
+    marginTop: 10,
+    fontSize: 12,
+    color: '#b45309',
+    lineHeight: 16,
+  },
+  payButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 12,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#059669',
+    gap: 8,
+  },
+  payButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  paidHint: {
+    marginTop: 10,
+    fontSize: 12,
+    color: '#059669',
+    fontWeight: '600',
+  },
+  actions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+  },
+  rescheduleButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#eff6ff',
+    gap: 6,
+  },
+  rescheduleButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.accent,
+  },
+  cancelButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: 10,
     borderRadius: 8,
     backgroundColor: '#fef2f2',
     gap: 6,
   },
   cancelButtonText: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
     color: '#ef4444',
   },

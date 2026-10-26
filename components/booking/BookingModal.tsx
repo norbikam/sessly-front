@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { Calendar, LocaleConfig } from 'react-native-calendars';
 import Colors from '../../constants/Colors';
 import { getAvailability } from '../../api/appointments';
+import { useLocale } from '../../contexts/LocaleContext';
 import type { Service, Business } from '../../types/api';
+import { formatServicePrice } from '../../utils/currency';
+import { localizedName } from '../../utils/localized';
 
 // Konfiguracja języka polskiego dla kalendarza
 LocaleConfig.locales['pl'] = {
@@ -29,48 +32,45 @@ interface BookingModalProps {
   visible: boolean;
   onClose: () => void;
   service: Service;
+  serviceIds?: string[];
   business: Business;
-  onConfirm: (date: string, time: string) => void;
+  onConfirm: (date: string, time: string, staffId?: string) => void;
 }
 
 const BookingModal: React.FC<BookingModalProps> = ({
   visible,
   onClose,
   service,
+  serviceIds,
   business,
   onConfirm,
 }) => {
+  const { currency, language, t } = useLocale();
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [selectedStaffId, setSelectedStaffId] = useState<string | undefined>();
 
   // Zresetuj stan przy otwarciu
   useEffect(() => {
     if (visible) {
-      setSelectedDate(null);
-      setSelectedTime(null);
-      setAvailableSlots([]);
+      void Promise.resolve().then(() => {
+        setSelectedDate(null);
+        setSelectedTime(null);
+        setAvailableSlots([]);
+        setSelectedStaffId(undefined);
+      });
     }
   }, [visible]);
 
-  // Pobieranie dostępności gdy wybierzemy datę
-  useEffect(() => {
-    if (selectedDate && business.slug) {
-      fetchAvailability(selectedDate);
-    }
-  }, [selectedDate]);
-
-  const fetchAvailability = async (date: string) => {
-    setLoading(true);
-    setAvailableSlots([]);
-    setSelectedTime(null);
-
+  const fetchAvailability = useCallback(async (date: string) => {
     try {
       const availability = await getAvailability(
         business.slug!,
-        String(service.id),
-        date
+        serviceIds?.length ? serviceIds : String(service.id),
+        date,
+        selectedStaffId,
       );
 
       let slots: string[] = [];
@@ -92,11 +92,18 @@ const BookingModal: React.FC<BookingModalProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [business.slug, selectedStaffId, service.id, serviceIds]);
+
+  // Pobieranie dostępności gdy wybierzemy datę
+  useEffect(() => {
+    if (selectedDate && business.slug) {
+      void Promise.resolve().then(() => fetchAvailability(selectedDate));
+    }
+  }, [business.slug, fetchAvailability, selectedDate]);
 
   const handleConfirm = () => {
     if (selectedDate && selectedTime) {
-      onConfirm(selectedDate, selectedTime);
+      onConfirm(selectedDate, selectedTime, selectedStaffId);
       onClose();
     }
   };
@@ -133,7 +140,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
 
           {/* Service Info */}
           <View style={styles.serviceInfo}>
-            <Text style={styles.serviceName}>{service.name}</Text>
+            <Text style={styles.serviceName}>{localizedName(service, language)}</Text>
             <View style={styles.serviceMeta}>
               <View style={styles.metaItem}>
                 <Ionicons name="time-outline" size={16} color="#666" />
@@ -144,22 +151,50 @@ const BookingModal: React.FC<BookingModalProps> = ({
               <View style={styles.metaItem}>
                 <Ionicons name="cash-outline" size={16} color="#666" />
                 <Text style={styles.metaText}>
-                  {service.price_amount !== undefined ? service.price_amount : '-'} PLN
+                  {formatServicePrice(service, currency)}
                 </Text>
               </View>
             </View>
           </View>
 
           <ScrollView style={styles.content} showsVerticalScrollIndicator={true}>
+            {business.staff_members?.length ? (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>{t('booking.pickStaff')}</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.staffList}>
+                  <TouchableOpacity
+                    style={[styles.staffChip, !selectedStaffId && styles.staffChipActive]}
+                    onPress={() => { setSelectedStaffId(undefined); setSelectedTime(null); }}
+                  >
+                    <Ionicons name="people-outline" size={20} color={!selectedStaffId ? '#fff' : Colors.accent} />
+                    <Text style={[styles.staffText, !selectedStaffId && styles.staffTextActive]}>{t('booking.anyStaff')}</Text>
+                  </TouchableOpacity>
+                  {business.staff_members.map((staff) => (
+                    <TouchableOpacity
+                      key={staff.id}
+                      style={[styles.staffChip, selectedStaffId === staff.id && styles.staffChipActive]}
+                      onPress={() => { setSelectedStaffId(staff.id); setSelectedTime(null); }}
+                    >
+                      <Ionicons name="person-outline" size={20} color={selectedStaffId === staff.id ? '#fff' : Colors.accent} />
+                      <Text style={[styles.staffText, selectedStaffId === staff.id && styles.staffTextActive]}>
+                        {staff.first_name || staff.username}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            ) : null}
             {/* Kalendarz */}
             <View style={styles.calendarSection}>
-              <Text style={styles.sectionTitle}>1. Wybierz dzień</Text>
+              <Text style={styles.sectionTitle}>{business.staff_members?.length ? '2' : '1'}. Wybierz dzień</Text>
               
               <View style={styles.calendarWrapper}>
                 <Calendar
                   current={selectedDate || today}
                   minDate={today}
                   onDayPress={(day: any) => {
+                    setLoading(true);
+                    setAvailableSlots([]);
                     setSelectedDate(day.dateString);
                     setSelectedTime(null);
                   }}
@@ -192,7 +227,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
             {selectedDate && (
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>
-                  2. Wybierz godzinę
+                  {business.staff_members?.length ? '3' : '2'}. Wybierz godzinę
                 </Text>
                 
                 {loading ? (
@@ -259,7 +294,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
               disabled={!selectedDate || !selectedTime}
             >
               <Ionicons name="checkmark" size={20} color="#fff" />
-              <Text style={styles.confirmButtonText}>Potwierdź</Text>
+              <Text style={styles.confirmButtonText}>{t('booking.confirm')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -324,6 +359,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 16,
   },
+  staffList: { gap: 10, paddingVertical: 4 },
+  staffChip: { minWidth: 112, minHeight: 64, paddingHorizontal: 13, borderRadius: 14, borderWidth: 1, borderColor: '#DDD6FE', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FAF5FF' },
+  staffChipActive: { backgroundColor: Colors.accent, borderColor: Colors.accent },
+  staffText: { color: Colors.accent, fontSize: 12, fontWeight: '700', marginTop: 5 },
+  staffTextActive: { color: '#fff' },
   metaItem: {
     flexDirection: 'row',
     alignItems: 'center',

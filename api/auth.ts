@@ -4,15 +4,9 @@ import {
     RegisterRequest,
     User,
 } from "../types/api";
-import { getToken, removeToken, saveToken } from "../utils/storage";
+import { getRefreshToken, getToken, removeToken } from "../utils/storage";
 import apiClient from "./client";
-
-interface RegisterApiError {
-  message?: string;
-  detail?: string;
-  details?: Record<string, string | string[]>;
-  [key: string]: any;
-}
+import { formatApiError } from "./errors";
 
 interface RegisterBusinessPayload {
   name: string;
@@ -26,22 +20,38 @@ interface RegisterBusinessPayload {
   nip?: string;
 }
 
-interface RegisterWithRoleRequest extends RegisterRequest {
-  role?: User["role"];
+type RegisterWithRoleRequest = Omit<RegisterRequest, "role" | "business"> & {
+  role?: "customer" | "business_owner";
   business?: RegisterBusinessPayload;
-}
+  organization_name?: string;
+  nip?: string;
+  phone?: string;
+  phone_number?: string;
+  legal_address_line1?: string;
+  legal_city?: string;
+  legal_postal_code?: string;
+  legal_country?: string;
+};
 
 // ============ PODSTAWOWA AUTORYZACJA ============
 
 export const login = async (
   credentials: LoginRequest,
 ): Promise<LoginResponse> => {
-  const response = await apiClient.post<LoginResponse>(
-    "/users/login/",
-    credentials,
-  );
-  await saveToken(response.data.access, response.data.refresh);
-  return response.data;
+  try {
+    const response = await apiClient.post<LoginResponse>(
+      "/users/login/",
+      {
+        username: credentials.username.trim(),
+        password: credentials.password,
+      },
+    );
+    return response.data;
+  } catch (error) {
+    const err = error as Error & { response?: unknown };
+    err.message = formatApiError(error, "Nieprawidłowy login lub hasło");
+    throw err;
+  }
 };
 
 export const register = async (
@@ -78,6 +88,34 @@ export const register = async (
     payload.role = data.role;
   }
 
+  if (data.organization_name && data.organization_name.trim()) {
+    payload.organization_name = data.organization_name.trim();
+  }
+
+  if (data.nip && data.nip.trim()) {
+    payload.nip = data.nip.trim();
+  }
+
+  if (data.phone_number && data.phone_number.trim()) {
+    payload.phone_number = data.phone_number.trim();
+  }
+
+  if (data.legal_address_line1 && data.legal_address_line1.trim()) {
+    payload.legal_address_line1 = data.legal_address_line1.trim();
+  }
+
+  if (data.legal_city && data.legal_city.trim()) {
+    payload.legal_city = data.legal_city.trim();
+  }
+
+  if (data.legal_postal_code && data.legal_postal_code.trim()) {
+    payload.legal_postal_code = data.legal_postal_code.trim();
+  }
+
+  if (data.legal_country && data.legal_country.trim()) {
+    payload.legal_country = data.legal_country.trim();
+  }
+
   if (data.business) {
     payload.business = data.business;
   }
@@ -89,37 +127,9 @@ export const register = async (
     );
     console.log("✅ Registration successful:", response.data);
 
-    // ✅ ZAPISZ TOKENY PO REJESTRACJI
-    if (response.data.access && response.data.refresh) {
-      await saveToken(response.data.access, response.data.refresh);
-      console.log("✅ Tokens saved");
-    }
-
     return response.data;
   } catch (error: any) {
-    console.error("❌ Registration error:", error.response?.data);
-
-    const errorData: RegisterApiError | undefined = error.response?.data;
-    const message =
-      errorData?.message ||
-      errorData?.detail ||
-      error.message ||
-      "Wystąpił błąd podczas rejestracji";
-
-    const registrationError = new Error(message) as Error & {
-      details?: RegisterApiError["details"];
-      raw?: RegisterApiError;
-    };
-
-    if (errorData?.details) {
-      registrationError.details = errorData.details;
-    }
-
-    if (errorData) {
-      registrationError.raw = errorData;
-    }
-
-    throw registrationError;
+    throw new Error(formatApiError(error, "Wystąpił błąd podczas rejestracji"));
   }
 };
 
@@ -132,7 +142,8 @@ export const logout = async (): Promise<void> => {
 
     if (token) {
       console.log("📤 Sending logout request...");
-      await apiClient.post("/users/logout/");
+      const refresh = await getRefreshToken();
+      await apiClient.post("/users/logout/", { refresh });
       console.log("✅ Backend logout successful");
     }
   } catch (error: any) {
@@ -147,6 +158,19 @@ export const logout = async (): Promise<void> => {
 
 export const getCurrentUser = async (): Promise<User> => {
   const response = await apiClient.get<User>("/users/me/");
+  return response.data;
+};
+
+export const updateCurrentUser = async (data: {
+  preferred_language?: 'pl' | 'en' | 'de';
+  preferred_currency?: 'PLN' | 'EUR';
+  first_name?: string;
+  last_name?: string;
+  notify_email_reminders?: boolean;
+  notify_push_reminders?: boolean;
+  notify_promotions?: boolean;
+}): Promise<User> => {
+  const response = await apiClient.patch<User>("/users/me/", data);
   return response.data;
 };
 

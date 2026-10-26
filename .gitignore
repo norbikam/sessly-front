@@ -8,9 +8,6 @@ build/
 *.apk
 *.aab
 
-# EAS
-eas.json
-
 # Environment
 .env
 .env.*

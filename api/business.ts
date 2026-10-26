@@ -1,10 +1,45 @@
 import apiClient from './client';
-import { Appointment, Business, Service } from '../types/api';
+import { Appointment, Business, BusinessImage, BusinessStaff, Review, Service, ServiceCategory } from '../types/api';
+import { Platform } from 'react-native';
+
+export type UploadAsset = { uri: string; fileName?: string | null; mimeType?: string | null };
+
+const appendUpload = async (form: FormData, field: string, asset: UploadAsset) => {
+  const name = asset.fileName || `sessly-${Date.now()}.jpg`;
+  const type = asset.mimeType || 'image/jpeg';
+  if (Platform.OS === 'web') {
+    const response = await fetch(asset.uri);
+    const blob = await response.blob();
+    const mime = blob.type || type;
+    const file = typeof File !== 'undefined'
+      ? new File([blob], name, { type: mime })
+      : blob;
+    form.append(field, file, name);
+  } else {
+    form.append(field, { uri: asset.uri, name, type } as any);
+  }
+};
+
+const unwrapList = <T>(data: unknown): T[] => {
+  if (Array.isArray(data)) return data as T[];
+  if (data && typeof data === 'object') {
+    const object = data as { results?: unknown; data?: unknown };
+    if (Array.isArray(object.results)) return object.results as T[];
+    if (Array.isArray(object.data)) return object.data as T[];
+  }
+  return [];
+};
 
 // --- ISTNIEJĄCE FUNKCJE (ODCZYT) ---
 
-export const getBusinesses = async (): Promise<Business[]> => {
-  const response = await apiClient.get<Business[]>('/businesses/');
+export const getBusinesses = async (params?: {
+  search?: string;
+  category?: string;
+  lat?: number;
+  lng?: number;
+  radius_km?: number;
+}): Promise<Business[]> => {
+  const response = await apiClient.get<Business[]>('/businesses/', { params });
   
   // ✅ NORMALIZACJA: Backend może zwrócić tablicę LUB obiekt z results
   let data = response.data;
@@ -45,8 +80,11 @@ export const getBusinessById = async (id: string): Promise<Business> => {
 };
 
 export interface BusinessCategory {
-  value: string; // ✅ Backend zwraca "value", nie "slug"
-  label: string; // ✅ Backend zwraca "label", nie "name"
+  value: string;
+  label: string;
+  slug: string;
+  name: string;
+  count: number;
 }
 
 export const getBusinessCategories = async (): Promise<BusinessCategory[]> => {
@@ -87,8 +125,8 @@ export const searchBusinesses = async (
  * Wymaga: user.business.slug
  */
 export const getMyServices = async (businessSlug: string): Promise<Service[]> => {
-  const response = await apiClient.get<Service[]>(`/businesses/${businessSlug}/services/`);
-  return response.data;
+  const response = await apiClient.get(`/businesses/${businessSlug}/services/`);
+  return unwrapList<Service>(response.data);
 };
 
 /**
@@ -103,6 +141,7 @@ export const addService = async (
     description?: string;
     buffer_minutes?: number;
     price_currency?: string;
+    category_id?: string;
   }
 ): Promise<Service> => {
   const response = await apiClient.post<Service>(
@@ -116,6 +155,121 @@ export const addService = async (
   return response.data;
 };
 
+export const uploadService = async (
+  businessSlug: string,
+  data: {
+    name: string;
+    price_amount: number;
+    price_amount_eur?: number;
+    duration_minutes: number;
+    description?: string;
+    category_id?: string;
+    promotional_price_amount?: number;
+    promotional_price_amount_eur?: number;
+    promotion_valid_until?: string;
+  },
+  asset?: UploadAsset,
+): Promise<Service> => {
+  const form = new FormData();
+  Object.entries(data).forEach(([key, value]) => {
+    if (value !== undefined) form.append(key, String(value));
+  });
+  if (asset) await appendUpload(form, 'image', asset);
+  const response = await apiClient.post<Service>(`/businesses/${businessSlug}/services/`, form);
+  return response.data;
+};
+
+export const updateService = async (
+  businessSlug: string,
+  serviceId: string,
+  data: {
+    name: string;
+    price_amount: number;
+    price_amount_eur?: number | null;
+    duration_minutes: number;
+    category_id?: string | null;
+    promotional_price_amount?: number | null;
+    promotional_price_amount_eur?: number | null;
+    promotion_valid_until?: string | null;
+  },
+  asset?: UploadAsset,
+): Promise<Service> => {
+  if (!asset) {
+    const response = await apiClient.patch<Service>(
+      `/businesses/${businessSlug}/services/${serviceId}/`,
+      data,
+    );
+    return response.data;
+  }
+
+  const form = new FormData();
+  Object.entries(data).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return;
+    form.append(key, String(value));
+  });
+  await appendUpload(form, 'image', asset);
+  const response = await apiClient.patch<Service>(
+    `/businesses/${businessSlug}/services/${serviceId}/`,
+    form,
+  );
+  return response.data;
+};
+
+export const getServiceCategories = async (slug: string): Promise<ServiceCategory[]> => {
+  const response = await apiClient.get(`/businesses/${slug}/service-categories/`);
+  return unwrapList<ServiceCategory>(response.data);
+};
+
+export const addServiceCategory = async (
+  slug: string,
+  data: Pick<ServiceCategory, 'name' | 'color'> & Partial<Pick<ServiceCategory, 'sort_order'>>,
+): Promise<ServiceCategory> => {
+  const response = await apiClient.post(`/businesses/${slug}/service-categories/`, data);
+  return response.data;
+};
+
+export const deleteServiceCategory = async (slug: string, id: string): Promise<void> => {
+  await apiClient.delete(`/businesses/${slug}/service-categories/${id}/`);
+};
+
+export const getBusinessStaff = async (slug: string): Promise<BusinessStaff[]> => {
+  const response = await apiClient.get(`/businesses/${slug}/staff/`);
+  return unwrapList<BusinessStaff>(response.data);
+};
+
+export const addBusinessStaff = async (
+  slug: string,
+  data: {
+    username: string;
+    password: string;
+    first_name: string;
+    last_name?: string;
+    avatar?: UploadAsset;
+  },
+): Promise<BusinessStaff> => {
+  if (data.avatar) {
+    const form = new FormData();
+    form.append('username', data.username);
+    form.append('password', data.password);
+    form.append('first_name', data.first_name);
+    if (data.last_name) form.append('last_name', data.last_name);
+    await appendUpload(form, 'avatar', data.avatar);
+    const response = await apiClient.post(`/businesses/${slug}/staff/`, form);
+    return response.data;
+  }
+  const response = await apiClient.post(`/businesses/${slug}/staff/`, {
+    username: data.username,
+    password: data.password,
+    first_name: data.first_name,
+    last_name: data.last_name,
+  });
+  return response.data;
+};
+
+export const removeBusinessStaff = async (slug: string, id: string): Promise<void> => {
+  await apiClient.delete(`/businesses/${slug}/staff/${id}/`);
+};
+
 /**
  * Usuń usługę
  */
@@ -127,18 +281,90 @@ export const deleteService = async (
 };
 
 /**
- * Zaktualizuj profil własnego biznesu
+ * Zaktualizuj profil własnego biznesu (opcjonalnie z logo jako multipart).
  */
-export const updateBusinessProfile = async (id: string | number, data: Partial<Business>): Promise<Business> => {
+export const updateBusinessProfile = async (
+  id: string | number,
+  data: Partial<Business> | Record<string, string | number | boolean | null | undefined>,
+  logo?: UploadAsset | null,
+): Promise<Business> => {
+  if (logo) {
+    const form = new FormData();
+    Object.entries(data).forEach(([key, value]) => {
+      if (value === undefined || value === null) return;
+      form.append(key, String(value));
+    });
+    await appendUpload(form, 'logo_image', logo);
+    const response = await apiClient.patch<Business>(`/businesses/my-business/${id}/`, form, {
+      headers: { 'Content-Type': undefined as unknown as string },
+    });
+    return response.data;
+  }
   const response = await apiClient.patch<Business>(`/businesses/my-business/${id}/`, data);
   return response.data;
+};
+
+export interface StaffStatsSummary {
+  id: string | null;
+  name: string;
+  username?: string | null;
+  total: number;
+  upcoming: number;
+  pending?: number;
+  current_month: number;
+  current_month_completed: number;
+  current_month_cancelled: number;
+  current_month_revenue: string;
+  /** @deprecated use current_month_* */
+  last_30_days?: number;
+  last_30_completed?: number;
+  last_30_cancelled?: number;
+  last_30_revenue?: string;
+}
+
+export interface BusinessStats {
+  total: number;
+  upcoming: number;
+  pending?: number;
+  confirmed: number;
+  completed: number;
+  cancelled: number;
+  current_month: number;
+  current_month_completed: number;
+  current_month_cancelled: number;
+  current_month_revenue: string;
+  /** @deprecated use current_month_* */
+  last_30_days?: number;
+  last_30_completed?: number;
+  last_30_cancelled?: number;
+  last_30_revenue?: string;
+  period?: string;
+  period_start?: string;
+  from_app: number;
+  from_external: number;
+  revenue: string;
+  daily: { date: string; count: number }[];
+  top_services: { name: string; count: number; revenue: string }[];
+  by_staff?: StaffStatsSummary[];
+}
+
+export const getBusinessStats = async (id: string, staffId?: string): Promise<BusinessStats> => {
+  const response = await apiClient.get(`/businesses/my-business/${id}/stats/`, {
+    params: staffId ? { staff_id: staffId } : undefined,
+  });
+  return response.data?.data || response.data;
+};
+
+export const getStaffStats = async (slug: string, staffId: string): Promise<BusinessStats & StaffStatsSummary> => {
+  const response = await apiClient.get(`/businesses/${slug}/staff/${staffId}/stats/`);
+  return response.data?.data || response.data;
 };
 
 // --- ✅ TWORZENIE BIZNESU ---
 
 export interface CreateBusinessData {
   name: string;
-  slug: string;
+  slug?: string;
   category: 'hairdresser' | 'doctor' | 'beauty' | 'spa' | 'fitness' | 'other';
   description?: string;
   email?: string;
@@ -152,9 +378,99 @@ export interface CreateBusinessData {
 }
 
 export const createBusiness = async (data: CreateBusinessData): Promise<Business> => {
-  console.log('📤 Creating business:', data);
-  const response = await apiClient.post<Business>('/businesses/my-business/', data);
-  console.log('✅ Business created:', response.data);
+  const payload = { ...data };
+  if (!payload.slug) delete payload.slug;
+  const response = await apiClient.post('/businesses/my-business/', payload);
+  const body = response.data;
+  if (body && typeof body === 'object' && !Array.isArray(body) && (body as any).id) {
+    return body as Business;
+  }
+  if (body && typeof body === 'object' && (body as any).data?.id) {
+    return (body as any).data as Business;
+  }
+  return body as Business;
+};
+
+export interface RegistryBusiness {
+  nip: string;
+  name: string;
+  regon: string;
+  address: string;
+  address_line1?: string;
+  postal_code?: string;
+  city?: string;
+  status: string;
+}
+
+export const lookupBusinessRegistry = async (nip: string): Promise<RegistryBusiness> => {
+  const response = await apiClient.get<RegistryBusiness>('/businesses/registry/lookup/', {
+    params: { nip },
+  });
+  return response.data;
+};
+
+export const getBusinessGallery = async (slug: string): Promise<BusinessImage[]> => {
+  const response = await apiClient.get(`/businesses/${slug}/gallery/`);
+  return unwrapList<BusinessImage>(response.data);
+};
+
+export const addBusinessImage = async (
+  slug: string,
+  image: Pick<BusinessImage, 'url'> & Partial<Pick<BusinessImage, 'caption' | 'is_cover' | 'sort_order'>>
+): Promise<BusinessImage> => {
+  const response = await apiClient.post<BusinessImage>(`/businesses/${slug}/gallery/`, image);
+  return response.data;
+};
+
+export const uploadBusinessImage = async (
+  slug: string,
+  asset: UploadAsset,
+  data: { caption?: string; is_cover?: boolean; sort_order?: number } = {},
+): Promise<BusinessImage> => {
+  const form = new FormData();
+  await appendUpload(form, 'image', asset);
+  if (data.caption) form.append('caption', data.caption);
+  form.append('is_cover', String(Boolean(data.is_cover)));
+  form.append('sort_order', String(data.sort_order || 0));
+  const response = await apiClient.post<BusinessImage>(`/businesses/${slug}/gallery/`, form);
+  return response.data;
+};
+
+export const uploadBusinessLogo = async (
+  id: string,
+  asset: UploadAsset,
+): Promise<Business> => {
+  const form = new FormData();
+  await appendUpload(form, 'logo_image', asset);
+  const response = await apiClient.patch<Business>(`/businesses/my-business/${id}/`, form, {
+    headers: { 'Content-Type': undefined as unknown as string },
+  });
+  return response.data;
+};
+
+export const deleteBusinessImage = async (slug: string, imageId: string): Promise<void> => {
+  await apiClient.delete(`/businesses/${slug}/gallery/${imageId}/`);
+};
+
+export const getBusinessReviews = async (slug: string): Promise<Review[]> => {
+  const response = await apiClient.get(`/businesses/${slug}/reviews/`);
+  return unwrapList<Review>(response.data);
+};
+
+export const addBusinessReview = async (
+  slug: string,
+  data: { rating: number; comment?: string }
+): Promise<Review> => {
+  const response = await apiClient.post<Review>(`/businesses/${slug}/reviews/`, data);
+  return response.data;
+};
+
+export const updateBusinessReview = async (
+  slug: string,
+  reviewId: string,
+  data: { rating: number; comment?: string }
+): Promise<Review> => {
+  const response = await apiClient.patch<Review>(`/businesses/${slug}/reviews/${reviewId}/`, data);
   return response.data;
 };
 
@@ -190,11 +506,23 @@ export const getMyBusiness = async (): Promise<Business | null> => {
  */
 export const getBusinessAppointments = async (slug: string): Promise<Appointment[]> => {
   const response = await apiClient.get(`/businesses/${slug}/appointments/`);
-  // Zabezpieczenie przed paginacją (jeśli backend zwraca { results: [...] })
-  if (response.data && Array.isArray((response.data as any).results)) {
-    return (response.data as any).results;
+  const data = response.data;
+
+  // Zabezpieczenie przed różnymi formatami odpowiedzi
+  if (Array.isArray(data)) {
+    return data;
   }
-  return response.data || [];
+  if (Array.isArray((data as any).results)) {
+    return (data as any).results;
+  }
+  if (Array.isArray((data as any).data)) {
+    return (data as any).data;
+  }
+  if (Array.isArray((data as any).appointments)) {
+    return (data as any).appointments;
+  }
+
+  return [];
 };
 
 /**

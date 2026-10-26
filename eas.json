@@ -1,0 +1,41 @@
+{
+  "cli": {
+    "version": ">= 13.0.0",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "simulator": true
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "ios": {
+        "simulator": false
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://api.sessly.pl",
+        "EXPO_PUBLIC_WEB_URL": "https://sessly.pl",
+        "EXPO_PUBLIC_SUPPORT_EMAIL": "support@sessly.pl",
+        "EXPO_PUBLIC_PHONE_VERIFY_ENABLED": "false"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://api.sessly.pl",
+        "EXPO_PUBLIC_WEB_URL": "https://sessly.pl",
+        "EXPO_PUBLIC_SUPPORT_EMAIL": "support@sessly.pl",
+        "EXPO_PUBLIC_PRIVACY_URL": "https://sessly.pl/privacy",
+        "EXPO_PUBLIC_TERMS_URL": "https://sessly.pl/terms",
+        "EXPO_PUBLIC_PHONE_VERIFY_ENABLED": "false"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

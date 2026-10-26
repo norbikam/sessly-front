@@ -13,10 +13,17 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
-import { getUserAppointments, cancelAppointment } from '../../api/appointments';
+import {
+  getUserAppointments,
+  cancelAppointment,
+  rescheduleAppointment,
+} from '../../api/appointments';
+import { payAppointmentDeposit } from '../../api/payments';
 import { Appointment } from '../../types/api';
 import Colors from '../../constants/Colors';
 import AppointmentCard from '../../components/appointments/AppointmentCard';
+import RescheduleModal from '../../components/appointments/RescheduleModal';
+import * as Linking from 'expo-linking';
 
 type FilterType = 'all' | 'upcoming' | 'past' | 'cancelled';
 
@@ -36,6 +43,8 @@ export default function AppointmentsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<FilterType>('all');
   const [error, setError] = useState<string | null>(null);
+  const [rescheduleTarget, setRescheduleTarget] = useState<Appointment | null>(null);
+  const [rescheduleSubmitting, setRescheduleSubmitting] = useState(false);
 
   const fetchAppointments = useCallback(async () => {
     if (!isLoggedIn) {
@@ -47,7 +56,7 @@ export default function AppointmentsScreen() {
       const data = await getUserAppointments();
       setAppointments(data);
       setError(null);
-    } catch (e: any) {
+    } catch {
       setError('Nie udało się załadować wizyt');
     } finally {
       setLoading(false);
@@ -56,7 +65,7 @@ export default function AppointmentsScreen() {
   }, [isLoggedIn]);
 
   useEffect(() => {
-    fetchAppointments();
+    void Promise.resolve().then(fetchAppointments);
   }, [fetchAppointments]);
 
   const onRefresh = () => {
@@ -83,6 +92,13 @@ export default function AppointmentsScreen() {
     }
   };
 
+  const apiErrorMessage = (e: any, fallback: string) =>
+    e?.response?.data?.message ||
+    e?.response?.data?.detail ||
+    e?.response?.data?.errors?.detail?.[0] ||
+    e?.message ||
+    fallback;
+
   const performCancel = async (appointmentId: string | number) => {
     try {
       await cancelAppointment(String(appointmentId));
@@ -94,12 +110,59 @@ export default function AppointmentsScreen() {
         Alert.alert('Sukces', 'Wizyta została anulowana');
       }
     } catch (e: any) {
-      const errorMessage = e?.response?.data?.detail || e?.message || 'Nie udało się anulować wizyty';
+      const errorMessage = apiErrorMessage(e, 'Nie udało się anulować wizyty');
       if (Platform.OS === 'web') {
         window.alert(`Błąd: ${errorMessage}`);
       } else {
         Alert.alert('Błąd', errorMessage);
       }
+    }
+  };
+
+  const handleRescheduleConfirm = async (date: string, time: string) => {
+    if (!rescheduleTarget) return;
+    setRescheduleSubmitting(true);
+    try {
+      await rescheduleAppointment(String(rescheduleTarget.id), {
+        date,
+        start_time: time,
+      });
+      setRescheduleTarget(null);
+      fetchAppointments();
+      const okMsg =
+        'Termin zmieniony. Salon musi ponownie potwierdzić wizytę.';
+      if (Platform.OS === 'web') {
+        window.alert(okMsg);
+      } else {
+        Alert.alert('Gotowe', okMsg);
+      }
+    } catch (e: any) {
+      const errorMessage = apiErrorMessage(e, 'Nie udało się zmienić terminu');
+      if (Platform.OS === 'web') {
+        window.alert(`Błąd: ${errorMessage}`);
+      } else {
+        Alert.alert('Błąd', errorMessage);
+      }
+    } finally {
+      setRescheduleSubmitting(false);
+    }
+  };
+
+  const handlePayDeposit = async (appointment: Appointment) => {
+    try {
+      const payment = await payAppointmentDeposit(String(appointment.id));
+      if (payment.checkout_url) {
+        await Linking.openURL(payment.checkout_url);
+      } else if (payment.status === 'paid') {
+        const msg = 'Zaliczka została opłacona.';
+        if (Platform.OS === 'web') window.alert(msg);
+        else Alert.alert('Gotowe', msg);
+      }
+      fetchAppointments();
+    } catch (e: any) {
+      const errorMessage = apiErrorMessage(e, 'Nie udało się rozpocząć płatności');
+      if (Platform.OS === 'web') window.alert(`Błąd: ${errorMessage}`);
+      else Alert.alert('Błąd', errorMessage);
     }
   };
 
@@ -250,10 +313,12 @@ export default function AppointmentsScreen() {
       <FlatList
         data={filteredAppointments}
         renderItem={({ item }) => (
-          <AppointmentCard 
-            appointment={item} 
+          <AppointmentCard
+            appointment={item}
             onCancel={handleCancelAppointment}
-            onBusinessPress={handleBusinessPress} 
+            onReschedule={setRescheduleTarget}
+            onPayDeposit={handlePayDeposit}
+            onBusinessPress={handleBusinessPress}
           />
         )}
         keyExtractor={(item) => String(item.id)}
@@ -270,6 +335,16 @@ export default function AppointmentsScreen() {
           />
         }
         showsVerticalScrollIndicator={true}
+      />
+
+      <RescheduleModal
+        visible={Boolean(rescheduleTarget)}
+        appointment={rescheduleTarget}
+        submitting={rescheduleSubmitting}
+        onClose={() => {
+          if (!rescheduleSubmitting) setRescheduleTarget(null);
+        }}
+        onConfirm={handleRescheduleConfirm}
       />
     </View>
   );

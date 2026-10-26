@@ -12,30 +12,31 @@ import {
   Animated,
   Modal,
   Alert,
-  Dimensions,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { useFavorites } from '../../contexts/FavoritesContext';
-import { searchBusinesses, getBusinessCategories, type BusinessCategory } from '../../api/business';
+import BusinessDashboard from '../business';
+import StaffHome from '../business/staff-home';
+import { searchBusinesses, getBusinessCategories } from '../../api/business';
 import { getUserAppointments } from '../../api/appointments';
 import { Business } from '../../types/api';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Colors from '../../constants/Colors';
+import { useLocale } from '../../contexts/LocaleContext';
 import SearchBar from '../../components/search/SearchBar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const { width } = Dimensions.get('window');
+import { categoryLabel } from '../../utils/categories';
 const SORT_KEY = '@sessly_sort_preference';
 
 type SortOption = 'name-asc' | 'name-desc' | 'newest';
 
 const SORT_OPTIONS = [
-  { value: 'name-asc', label: 'Nazwa A-Z', icon: 'arrow-up-outline' },
-  { value: 'name-desc', label: 'Nazwa Z-A', icon: 'arrow-down-outline' },
-  { value: 'newest', label: 'Najnowsze', icon: 'sparkles-outline' },
+  { value: 'name-asc' as const, labelKey: 'home.sortNameAsc', icon: 'arrow-up-outline' },
+  { value: 'name-desc' as const, labelKey: 'home.sortNameDesc', icon: 'arrow-down-outline' },
+  { value: 'newest' as const, labelKey: 'home.sortNewest', icon: 'sparkles-outline' },
 ];
 
 function useDebounce<T>(value: T, delay: number): T {
@@ -51,11 +52,169 @@ function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
-const getAppointmentsLabel = (count: number) => {
-  if (count === 1) return 'wizyta';
-  if (count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 10 || count % 100 >= 20)) return 'wizyty';
-  return 'wizyt';
+const appointmentLabel = (
+  count: number,
+  language: string,
+  t: (key: string) => string,
+) => {
+  if (count === 1) return t('home.appointmentOne');
+  if (
+    language === 'pl'
+    && count % 10 >= 2
+    && count % 10 <= 4
+    && (count % 100 < 10 || count % 100 >= 20)
+  ) {
+    return t('home.appointmentFew');
+  }
+  return t('home.appointmentMany');
 };
+
+type TranslateFn = (key: string, fallback?: string, vars?: Record<string, string | number>) => string;
+
+function HomeListHeader({
+  isLoggedIn,
+  firstName,
+  username,
+  searchQuery,
+  onChangeSearch,
+  upcomingAppointments,
+  categories,
+  selectedCategory,
+  onSelectCategory,
+  loading,
+  resultsCount,
+  onOpenSort,
+  language,
+  t,
+  onLogin,
+  onAccount,
+  onAppointments,
+}: {
+  isLoggedIn: boolean;
+  firstName?: string | null;
+  username?: string | null;
+  searchQuery: string;
+  onChangeSearch: (text: string) => void;
+  upcomingAppointments: number;
+  categories: any[];
+  selectedCategory: string;
+  onSelectCategory: (value: string) => void;
+  loading: boolean;
+  resultsCount: number;
+  onOpenSort: () => void;
+  language: string;
+  t: TranslateFn;
+  onLogin: () => void;
+  onAccount: () => void;
+  onAppointments: () => void;
+}) {
+  return (
+    <View style={styles.headerWrapper}>
+      <LinearGradient
+        colors={['#8B5CF6', '#7C3AED']}
+        style={styles.headerGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <View style={styles.headerCircle1} />
+        <View style={styles.headerCircle2} />
+
+        <View style={styles.headerTop}>
+          <View style={styles.logoContainer}>
+            <Ionicons name="sparkles" size={24} color="#fff" />
+            <Text style={styles.appName}>Sessly</Text>
+          </View>
+
+          {isLoggedIn ? (
+            <TouchableOpacity style={styles.userBadge} onPress={onAccount}>
+              <Text style={styles.userName} numberOfLines={1}>
+                {firstName || username || t('home.profile')}
+              </Text>
+              <View style={styles.avatarPlaceholder}>
+                <Text style={styles.avatarText}>
+                  {(firstName?.[0] || username?.[0] || '?').toUpperCase()}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.loginPill} onPress={onLogin}>
+              <Text style={styles.loginPillText}>{t('account.login')}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <Text style={styles.greeting}>
+          {firstName
+            ? t('home.helloName', undefined, { name: firstName })
+            : t('home.hello')}
+        </Text>
+        <Text style={styles.subtitle}>{t('home.subtitle')}</Text>
+
+        <View style={styles.searchContainer}>
+          <SearchBar
+            value={searchQuery}
+            onChangeText={onChangeSearch}
+            onClear={() => onChangeSearch('')}
+            placeholder={t('home.search')}
+          />
+        </View>
+
+        {isLoggedIn && upcomingAppointments > 0 ? (
+          <TouchableOpacity style={styles.upcomingPill} onPress={onAppointments}>
+            <Ionicons name="calendar" size={18} color="#fff" />
+            <Text style={styles.upcomingText}>
+              {t('home.upcoming', undefined, {
+                count: upcomingAppointments,
+                label: appointmentLabel(upcomingAppointments, language, t),
+              })}
+            </Text>
+            <Ionicons name="chevron-forward" size={16} color="#fff" />
+          </TouchableOpacity>
+        ) : null}
+      </LinearGradient>
+
+      <View style={styles.categoriesWrapper}>
+        <FlatList
+          horizontal
+          keyboardShouldPersistTaps="handled"
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.categoriesScroll}
+          data={[{ value: 'all', label: t('category.all'), slug: 'all', name: t('category.all') }, ...categories]}
+          keyExtractor={(item, index) => item.value || item.slug || String(index)}
+          renderItem={({ item }) => {
+            const itemValue = item.value || item.slug;
+            const itemLabel = categoryLabel(itemValue, language, item.label || item.name);
+            const isActive = selectedCategory === itemValue;
+
+            return (
+              <TouchableOpacity
+                style={[styles.categoryChip, isActive && styles.categoryChipActive]}
+                onPress={() => onSelectCategory(itemValue)}
+              >
+                <Text style={[styles.categoryText, isActive && styles.categoryTextActive]}>{itemLabel}</Text>
+              </TouchableOpacity>
+            );
+          }}
+        />
+      </View>
+
+      {!loading ? (
+        <View style={styles.resultsHeader}>
+          <Text style={styles.resultsCount}>
+            {t('home.resultsCount', undefined, {
+              count: resultsCount,
+              label: resultsCount === 1 ? t('home.businessOne') : t('home.businessMany'),
+            })}
+          </Text>
+          <TouchableOpacity style={styles.sortButton} onPress={onOpenSort}>
+            <Ionicons name="swap-vertical" size={16} color={Colors.light.accent} />
+            <Text style={styles.sortButtonText}>{t('home.sort')}</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+    </View>
+  );
+}
 
 // ANIMACJA LADOWANIA (SKELETON)
 function SkeletonCard() {
@@ -120,14 +279,26 @@ function AnimatedHeart({ isFavorite, onPress }: { isFavorite: boolean; onPress: 
 }
 
 // MODAL SORTOWANIA
-function SortModal({ visible, onClose, onSelect, currentSort }: any) {
+function SortModal({
+  visible,
+  onClose,
+  onSelect,
+  currentSort,
+  t,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onSelect: (value: SortOption) => void;
+  currentSort: SortOption;
+  t: (key: string) => string;
+}) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.modalOverlay} onPress={onClose}>
         <View style={styles.modalContent}>
           <View style={styles.modalHandle} />
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Sortowanie</Text>
+            <Text style={styles.modalTitle}>{t('home.sorting')}</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
               <Ionicons name="close-circle" size={28} color="#CBD5E1" />
             </TouchableOpacity>
@@ -145,7 +316,7 @@ function SortModal({ visible, onClose, onSelect, currentSort }: any) {
                 <View style={[styles.sortOptionIcon, isActive && styles.sortOptionIconActive]}>
                   <Ionicons name={option.icon as any} size={22} color={isActive ? '#fff' : Colors.light.accent} />
                 </View>
-                <Text style={[styles.sortOptionText, isActive && styles.sortOptionTextActive]}>{option.label}</Text>
+                <Text style={[styles.sortOptionText, isActive && styles.sortOptionTextActive]}>{t(option.labelKey)}</Text>
                 {isActive && <Ionicons name="checkmark-circle" size={24} color={Colors.light.accent} />}
               </TouchableOpacity>
             );
@@ -159,6 +330,7 @@ function SortModal({ visible, onClose, onSelect, currentSort }: any) {
 export default function HomeScreen() {
   const router = useRouter();
   const { user, isLoggedIn } = useAuth();
+  const { language, t } = useLocale();
   
   // ✅ POBIERAMY favoriteIds, aby FlatList wiedział, kiedy ma się odświeżyć
   const { favoriteIds, isFavorite, toggleFavorite } = useFavorites();
@@ -213,7 +385,7 @@ export default function HomeScreen() {
       }
     };
     loadCategories();
-  }, []);
+  }, [language]);
 
   const loadBusinesses = useCallback(async () => {
     setSearching(true);
@@ -226,10 +398,10 @@ export default function HomeScreen() {
       setSearching(false);
       setLoading(false);
     }
-  }, [debouncedSearch, selectedCategory]);
+  }, [debouncedSearch, selectedCategory, language]);
 
   useEffect(() => {
-    loadBusinesses();
+    void Promise.resolve().then(loadBusinesses);
   }, [loadBusinesses]);
 
   const loadUpcomingAppointments = useCallback(async () => {
@@ -262,16 +434,16 @@ export default function HomeScreen() {
 
   const handleFavoritePress = async (business: Business) => {
     if (!isLoggedIn) {
-      Alert.alert('Wymagane logowanie', 'Zaloguj się, aby dodać do ulubionych.', [
-        { text: 'Anuluj', style: 'cancel' },
-        { text: 'Zaloguj się', onPress: () => router.push('/(auth)/login') }
+      Alert.alert(t('home.loginRequired'), t('home.loginToFavorite'), [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('account.login'), onPress: () => router.push('/(auth)/login') }
       ]);
       return;
     }
     try {
       await toggleFavorite(business);
-    } catch (error) {
-      Alert.alert('Błąd', 'Nie udało się zmienić statusu ulubionej');
+    } catch {
+      Alert.alert(t('common.errorTitle'), t('home.favoriteError'));
     }
   };
 
@@ -292,107 +464,38 @@ export default function HomeScreen() {
     return parts.join(', ');
   };
 
-  const renderHeader = () => (
-    <View style={styles.headerWrapper}>
-      <LinearGradient 
-        colors={['#8B5CF6', '#7C3AED']} 
-        style={styles.headerGradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      >
-        <View style={styles.headerCircle1} />
-        <View style={styles.headerCircle2} />
-        
-        <View style={styles.headerTop}>
-          <View style={styles.logoContainer}>
-            <Ionicons name="sparkles" size={24} color="#fff" />
-            <Text style={styles.appName}>Sessly</Text>
-          </View>
-          
-          {isLoggedIn ? (
-            <TouchableOpacity style={styles.userBadge} onPress={() => router.push('/(tabs)/account')}>
-              <Text style={styles.userName} numberOfLines={1}>
-                {user?.first_name || user?.username || 'Profil'}
-              </Text>
-              <View style={styles.avatarPlaceholder}>
-                <Text style={styles.avatarText}>
-                  {(user?.first_name?.[0] || user?.username?.[0] || '?').toUpperCase()}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity style={styles.loginPill} onPress={() => router.push('/(auth)/login')}>
-              <Text style={styles.loginPillText}>Zaloguj się</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        <Text style={styles.greeting}>Cześć{user?.first_name ? `, ${user.first_name}` : ''}!</Text>
-        <Text style={styles.subtitle}>Zarezerwuj wizytę w okolicy</Text>
-
-        <View style={styles.searchContainer}>
-          <SearchBar 
-            value={searchQuery} 
-            onChangeText={setSearchQuery} 
-            onClear={() => setSearchQuery('')} 
-            placeholder="Szukaj salonu lub usługi..." 
-          />
-        </View>
-
-        {isLoggedIn && upcomingAppointments > 0 && (
-          <TouchableOpacity style={styles.upcomingPill} onPress={() => router.push('/(tabs)/appointments')}>
-            <Ionicons name="calendar" size={18} color="#fff" />
-            <Text style={styles.upcomingText}>Masz {upcomingAppointments} {getAppointmentsLabel(upcomingAppointments)}</Text>
-            <Ionicons name="chevron-forward" size={16} color="#fff" />
-          </TouchableOpacity>
-        )}
-      </LinearGradient>
-
-      <View style={styles.categoriesWrapper}>
-        <FlatList
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.categoriesScroll}
-          data={[{ value: 'all', label: 'Wszystkie', slug: 'all', name: 'Wszystkie' }, ...categories]}
-          keyExtractor={(item, index) => item.value || item.slug || String(index)}
-          renderItem={({ item }) => {
-            const itemValue = item.value || item.slug;
-            const itemLabel = item.label || item.name;
-            const isActive = selectedCategory === itemValue;
-            
-            return (
-              <TouchableOpacity 
-                style={[styles.categoryChip, isActive && styles.categoryChipActive]} 
-                onPress={() => setSelectedCategory(itemValue)}
-              >
-                <Text style={[styles.categoryText, isActive && styles.categoryTextActive]}>{itemLabel}</Text>
-              </TouchableOpacity>
-            );
-          }}
-        />
-      </View>
-
-      {!loading && (
-        <View style={styles.resultsHeader}>
-          <Text style={styles.resultsCount}>{sortedBusinesses.length} {sortedBusinesses.length === 1 ? 'firma' : 'firm'}</Text>
-          <TouchableOpacity style={styles.sortButton} onPress={() => setShowSortModal(true)}>
-            <Ionicons name="swap-vertical" size={16} color={Colors.light.accent} />
-            <Text style={styles.sortButtonText}>Sortuj</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-    </View>
+  // Element (nie funkcja) — FlatList nie remountuje inputu przy każdym znaku.
+  const listHeader = (
+    <HomeListHeader
+      isLoggedIn={isLoggedIn}
+      firstName={user?.first_name}
+      username={user?.username}
+      searchQuery={searchQuery}
+      onChangeSearch={setSearchQuery}
+      upcomingAppointments={upcomingAppointments}
+      categories={categories}
+      selectedCategory={selectedCategory}
+      onSelectCategory={setSelectedCategory}
+      loading={loading}
+      resultsCount={sortedBusinesses.length}
+      onOpenSort={() => setShowSortModal(true)}
+      language={language}
+      t={t}
+      onLogin={() => router.push('/(auth)/login')}
+      onAccount={() => router.push('/(tabs)/account')}
+      onAppointments={() => router.push('/(tabs)/appointments')}
+    />
   );
 
   const renderBusinessCard = ({ item }: { item: Business }) => {
     // ✅ POPRAWKA: Zawsze sprawdzamy tylko numeryczne ID (zgodnie z FavoritesContext)
     const favorite = isFavorite(String(item.id));
     
-    const imageUrl = `https://picsum.photos/seed/${item.id}/600/400`;
+    const imageUrl = item.cover_image || item.logo_url;
     const address = formatBusinessAddress(item);
 
-    const categoryMatch = categories.find(c => (c.value === item.category) || (c.slug === item.category));
-    const categoryDisplay = categoryMatch ? (categoryMatch.label || categoryMatch.name) : item.category || 'Usługa';
+    const categoryDisplay = item.category_label
+      || categoryLabel(item.category, language, t('category.fallback'));
 
     return (
       <TouchableOpacity 
@@ -401,7 +504,13 @@ export default function HomeScreen() {
         activeOpacity={0.9}
       >
         <View style={styles.imageContainer}>
-          <Image source={{ uri: imageUrl }} style={styles.businessImage} contentFit="cover" transition={200} />
+          {imageUrl ? (
+            <Image source={{ uri: imageUrl }} style={styles.businessImage} contentFit="cover" transition={200} />
+          ) : (
+            <View style={styles.businessImagePlaceholder}>
+              <Ionicons name="storefront-outline" size={42} color="#A78BFA" />
+            </View>
+          )}
           <View style={styles.favoriteContainer}>
             <AnimatedHeart isFavorite={favorite} onPress={() => handleFavoritePress(item)} />
           </View>
@@ -424,11 +533,14 @@ export default function HomeScreen() {
           <View style={styles.cardFooter}>
             <View style={styles.servicesCountBadge}>
               <Text style={styles.servicesCountText}>
-                {item.services_count || 0} {item.services_count === 1 ? 'usługa' : 'usług'}
+                {t('home.servicesCount', undefined, {
+                  count: item.services_count || 0,
+                  label: (item.services_count || 0) === 1 ? t('home.serviceOne') : t('home.serviceMany'),
+                })}
               </Text>
             </View>
             <View style={styles.bookBtn}>
-              <Text style={styles.bookBtnText}>Umów</Text>
+              <Text style={styles.bookBtnText}>{user?.role === 'customer' ? t('home.book') : t('home.details')}</Text>
             </View>
           </View>
         </View>
@@ -436,11 +548,18 @@ export default function HomeScreen() {
     );
   };
 
+  if (user?.role === 'business_owner') {
+    return <BusinessDashboard />;
+  }
+  if (user?.role === 'staff') {
+    return <StaffHome />;
+  }
+
   return (
     <View style={styles.container}>
       {loading && !refreshing ? (
         <View>
-          {renderHeader()}
+          {listHeader}
           <View style={styles.listContent}>
             <SkeletonCard />
             <SkeletonCard />
@@ -449,11 +568,11 @@ export default function HomeScreen() {
       ) : (
         <FlatList
           data={sortedBusinesses}
-          // ✅ POPRAWKA: Przekazujemy favoriteIds, by wymusić odświeżenie karty po kliknięciu!
           extraData={favoriteIds}
           keyExtractor={(item) => String(item.id)}
           renderItem={renderBusinessCard}
-          ListHeaderComponent={renderHeader}
+          ListHeaderComponent={listHeader}
+          keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.list}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.light.accent} />}
           ListEmptyComponent={
@@ -475,7 +594,8 @@ export default function HomeScreen() {
         visible={showSortModal} 
         onClose={() => setShowSortModal(false)} 
         onSelect={handleSortSelect} 
-        currentSort={sortBy} 
+        currentSort={sortBy}
+        t={t}
       />
     </View>
   );
@@ -531,6 +651,7 @@ const styles = StyleSheet.create({
   card: { backgroundColor: '#fff', marginHorizontal: 20, marginBottom: 20, borderRadius: 16, overflow: 'hidden', shadowColor: '#4C1D95', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 4 },
   imageContainer: { width: '100%', height: 160, backgroundColor: '#F1F5F9', position: 'relative' },
   businessImage: { width: '100%', height: '100%' },
+  businessImagePlaceholder: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', backgroundColor: '#F5F3FF' },
   
   favoriteButton: { padding: 6, backgroundColor: '#fff', borderRadius: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3 },
   favoriteContainer: { position: 'absolute', top: 12, right: 12 },

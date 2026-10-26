@@ -1,16 +1,29 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   View, Text, StyleSheet, TouchableOpacity, 
   TextInput, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView 
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import apiClient from '../../api/client';
 import Colors from '../../constants/Colors';
+import { lookupBusinessRegistry, updateBusinessProfile, UploadAsset } from '../../api/business';
+import { notify } from '../../utils/notify';
+import { useLocation } from '../../contexts/LocationContext';
+
+const BRAND_COLORS = [
+  '#8B5CF6', '#6366F1', '#2563EB', '#0891B2',
+  '#059669', '#65A30D', '#D97706', '#DC2626',
+  '#DB2777', '#7C3AED', '#475569', '#18181B',
+];
 
 export default function EditBusinessProfileScreen() {
+  const { activeLocation } = useLocation();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [lookingUpNip, setLookingUpNip] = useState(false);
   const [businessId, setBusinessId] = useState<string | null>(null);
 
   // Formularz danych
@@ -19,17 +32,17 @@ export default function EditBusinessProfileScreen() {
   const [phone, setPhone] = useState('');
   const [website, setWebsite] = useState('');
   const [nip, setNip] = useState('');
+  const [logoUrl, setLogoUrl] = useState('');
+  const [logoAsset, setLogoAsset] = useState<UploadAsset | null>(null);
+  const [brandColor, setBrandColor] = useState('#8B5CF6');
   
   // Adres
   const [address, setAddress] = useState('');
   const [city, setCity] = useState('');
   const [postalCode, setPostalCode] = useState('');
+  const [depositPercent, setDepositPercent] = useState('0');
 
-  useEffect(() => {
-    loadProfile();
-  }, []);
-
-  const loadProfile = async () => {
+  const loadProfile = useCallback(async () => {
     try {
       setLoading(true);
       // 1. Zamiast szukać w pamięci telefonu, odpytujemy bezpośrednio endpoint dla właścicieli:
@@ -46,7 +59,9 @@ export default function EditBusinessProfileScreen() {
         return;
       }
 
-      const business = data[0]; // Bierzemy pierwszy (Twój) salon z listy
+      const business = data.find(
+        (item: any) => String(item.id) === activeLocation?.id || item.slug === activeLocation?.slug
+      ) || data[0];
 
       // 2. Bezpiecznie zapisujemy PRAWDZIWE ID z bazy danych
       setBusinessId(String(business.id));
@@ -56,10 +71,15 @@ export default function EditBusinessProfileScreen() {
       setPhone(business.phone_number || '');
       setWebsite(business.website_url || '');
       setNip(business.nip || '');
+      setLogoUrl(business.logo_url || '');
+      setBrandColor(BRAND_COLORS.includes(business.brand_color) ? business.brand_color : '#8B5CF6');
       
       setAddress(business.address_line1 || '');
       setCity(business.city || '');
       setPostalCode(business.postal_code || '');
+      setDepositPercent(
+        business.deposit_percent != null ? String(business.deposit_percent) : '0'
+      );
       
     } catch (e) {
       console.error('Błąd pobierania wizytówki:', e);
@@ -67,6 +87,45 @@ export default function EditBusinessProfileScreen() {
     } finally {
       setLoading(false);
     }
+  }, [activeLocation?.id, activeLocation?.slug]);
+
+  useEffect(() => {
+    void Promise.resolve().then(loadProfile);
+  }, [loadProfile]);
+
+  const handleNipLookup = async () => {
+    try {
+      setLookingUpNip(true);
+      const company = await lookupBusinessRegistry(nip);
+      setNip(company.nip);
+      setName(company.name || name);
+      setAddress(company.address_line1 || company.address || address);
+      if (company.city) setCity(company.city);
+      if (company.postal_code) setPostalCode(company.postal_code);
+      notify('Znaleziono firmę', company.regon ? `REGON: ${company.regon}` : 'Dane zostały uzupełnione.');
+    } catch (error: any) {
+      const message = error?.response?.data?.error?.message
+        || error?.response?.data?.detail
+        || 'Nie udało się pobrać danych firmy.';
+      notify('Błąd wyszukiwania', message);
+    } finally {
+      setLookingUpNip(false);
+    }
+  };
+
+  const handlePickLogo = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      notify('Brak dostępu', 'Zezwól aplikacji na dostęp do zdjęć.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.9,
+    });
+    if (!result.canceled) setLogoAsset(result.assets[0]);
   };
 
   const handleSave = async () => {
@@ -89,25 +148,31 @@ export default function EditBusinessProfileScreen() {
     try {
       setSaving(true);
       
+      const depositValue = Math.min(
+        100,
+        Math.max(0, Number(String(depositPercent).replace(',', '.')) || 0)
+      );
+
       const payload = {
         name: name.trim(),
         description: description.trim(),
         phone_number: phone.trim(),
         website_url: safeWebsite,
         nip: nip.trim(),
+        brand_color: brandColor,
         address_line1: address.trim(),
         city: city.trim(),
         postal_code: postalCode.trim(),
+        deposit_percent: depositValue,
       };
 
-      // 3. Uderzamy precyzyjnie w endpoint PATCH z konkretnym, potwierdzonym ID
-      await apiClient.patch(`/businesses/my-business/${businessId}/`, payload);
+      await updateBusinessProfile(businessId, payload, logoAsset);
 
-      Alert.alert('Sukces!', 'Wizytówka Twojego salonu została pomyślnie zaktualizowana.');
+      notify('Sukces!', 'Wizytówka Twojego salonu została pomyślnie zaktualizowana.');
       router.back();
     } catch (e: any) {
       console.error('Błąd zapisu:', e?.response?.data || e);
-      Alert.alert(
+      notify(
         'Błąd zapisu', 
         e?.response?.data ? JSON.stringify(e.response.data) : 'Sprawdź połączenie z serwerem.'
       );
@@ -167,7 +232,72 @@ export default function EditBusinessProfileScreen() {
           <TextInput style={styles.input} value={website} onChangeText={setWebsite} keyboardType="url" autoCapitalize="none" placeholder="https://twojastrona.pl" />
 
           <Text style={styles.inputLabel}>NIP (Opcjonalnie)</Text>
-          <TextInput style={styles.input} value={nip} onChangeText={setNip} keyboardType="numeric" placeholder="Twój NIP" />
+          <View style={styles.nipRow}>
+            <TextInput
+              style={[styles.input, styles.nipInput]}
+              value={nip}
+              onChangeText={setNip}
+              keyboardType="numeric"
+              placeholder="Twój NIP"
+              maxLength={13}
+            />
+            <TouchableOpacity
+              style={styles.lookupButton}
+              onPress={handleNipLookup}
+              disabled={lookingUpNip}
+            >
+              {lookingUpNip
+                ? <ActivityIndicator color="#fff" size="small" />
+                : <Text style={styles.lookupButtonText}>Pobierz dane</Text>}
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.inputLabel}>Zaliczka przy rezerwacji (%)</Text>
+          <TextInput
+            style={styles.input}
+            value={depositPercent}
+            onChangeText={setDepositPercent}
+            keyboardType="decimal-pad"
+            placeholder="0 = wyłączone, np. 30"
+          />
+          <Text style={styles.hint}>
+            Klient płaci ten procent ceny usługi po rezerwacji. 0 wyłącza zaliczki.
+          </Text>
+        </View>
+
+        <View style={styles.formCard}>
+          <Text style={styles.sectionTitle}>Wygląd wizytówki</Text>
+
+          <Text style={styles.inputLabel}>Logo</Text>
+          <TouchableOpacity style={styles.logoPicker} onPress={handlePickLogo}>
+            {logoAsset || logoUrl ? (
+              <Image source={{ uri: logoAsset?.uri || logoUrl }} style={styles.logoPreview} contentFit="cover" />
+            ) : (
+              <Ionicons name="image-outline" size={34} color={Colors.light.accent} />
+            )}
+            <View style={styles.logoPickerText}>
+              <Text style={styles.logoPickerTitle}>{logoAsset || logoUrl ? 'Zmień logo' : 'Wybierz logo'}</Text>
+              <Text style={styles.logoPickerHint}>Kwadratowe zdjęcie, maks. 8 MB</Text>
+            </View>
+          </TouchableOpacity>
+
+          <Text style={styles.inputLabel}>Kolor profilu</Text>
+          <View style={styles.colorGrid}>
+            {BRAND_COLORS.map((color) => (
+              <TouchableOpacity
+                key={color}
+                style={[
+                  styles.colorOption,
+                  { backgroundColor: color },
+                  brandColor === color && styles.colorOptionSelected,
+                ]}
+                onPress={() => setBrandColor(color)}
+                accessibilityLabel={`Wybierz kolor ${color}`}
+              >
+                {brandColor === color ? <Ionicons name="checkmark" size={22} color="#fff" /> : null}
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
 
         <View style={styles.formCard}>
@@ -229,6 +359,22 @@ const styles = StyleSheet.create({
   },
   textArea: { height: 100, paddingTop: 14, paddingBottom: 14 },
   row: { flexDirection: 'row', gap: 12 },
+  nipRow: { flexDirection: 'row', gap: 10 },
+  nipInput: { flex: 1 },
+  lookupButton: {
+    height: 50, paddingHorizontal: 16, borderRadius: 14, backgroundColor: Colors.light.accent,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  lookupButtonText: { color: '#fff', fontWeight: '800', fontSize: 13 },
+  hint: { fontSize: 12, color: '#64748B', marginTop: -8, marginBottom: 12, marginLeft: 4, lineHeight: 16 },
+  logoPicker: { flexDirection: 'row', alignItems: 'center', minHeight: 88, padding: 12, marginBottom: 16, borderRadius: 16, borderWidth: 1, borderColor: '#DDD6FE', backgroundColor: '#FAF5FF' },
+  logoPreview: { width: 64, height: 64, borderRadius: 16, backgroundColor: '#EDE9FE' },
+  logoPickerText: { flex: 1, marginLeft: 14 },
+  logoPickerTitle: { color: Colors.light.accent, fontWeight: '800', fontSize: 15 },
+  logoPickerHint: { color: '#64748B', fontSize: 12, marginTop: 4 },
+  colorGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  colorOption: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  colorOptionSelected: { borderWidth: 3, borderColor: '#E2E8F0', transform: [{ scale: 1.08 }] },
 
   saveBtn: { 
     backgroundColor: Colors.light.accent, height: 54, borderRadius: 16, 

@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
-import { api } from '../api/client';
 import { 
   login as apiLogin, 
   register as apiRegister, 
@@ -9,6 +8,14 @@ import {
   getCurrentUser // <--- DODANY IMPORT
 } from '../api/auth';
 import { RegisterRequest, User } from '../types/api';
+import {
+  forgetAccount,
+  getSavedAccounts,
+  rememberAccount,
+  saveToken,
+  SavedAccount,
+} from '../utils/storage';
+import { onSessionExpired } from '../utils/session';
 
 type Credentials = { username: string; password: string };
 type RegisterData = RegisterRequest;
@@ -16,8 +23,11 @@ type RegisterData = RegisterRequest;
 type AuthContextType = {
   user: User | null;
   isLoggedIn: boolean;
-  login: (credentials: Credentials) => Promise<void>;
-  register: (data: RegisterData) => Promise<{ success: boolean; error?: string }>;
+  login: (credentials: Credentials, remember?: boolean) => Promise<void>;
+  savedAccounts: SavedAccount[];
+  switchAccount: (accountId: string) => Promise<void>;
+  removeSavedAccount: (accountId: string) => Promise<void>;
+  register: (data: RegisterData) => Promise<{ success: boolean; requiresVerification?: boolean; error?: string }>;
   logout: () => Promise<void>;
   updateUser: (userData: Partial<User>) => Promise<void>;
   refreshUser: () => Promise<void>; // <--- DODANA DEKLARACJA
@@ -28,13 +38,11 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [savedAccounts, setSavedAccounts] = useState<SavedAccount[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isPersistentSession, setIsPersistentSession] = useState(true);
 
-  useEffect(() => {
-    loadStoredUser();
-  }, []);
-
-  const loadStoredUser = async () => {
+  async function loadStoredUser() {
     try {
       let storedUserStr: string | null = null;
       let accessToken: string | null = null;
@@ -51,25 +59,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (storedUserStr && accessToken) {
         setUser(JSON.parse(storedUserStr));
       }
+      setSavedAccounts(await getSavedAccounts());
     } catch (error) {
       console.error('Failed to load stored user:', error);
     } finally {
       setIsLoading(false);
     }
+  }
+
+  useEffect(() => {
+    void Promise.resolve().then(loadStoredUser);
+  }, []);
+
+  useEffect(() => {
+    return onSessionExpired(() => {
+      setUser(null);
+      setIsPersistentSession(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    void import('../utils/push').then(({ syncPushTokenWithBackend }) => {
+      void syncPushTokenWithBackend();
+    });
+  }, [user?.id]);
+
+  const persistUser = async (userData: User, persist = isPersistentSession) => {
+    if (!persist) {
+      if (Platform.OS === 'web') localStorage.removeItem('user');
+      else await AsyncStorage.removeItem('user');
+      return;
+    }
+    if (Platform.OS === 'web') {
+      localStorage.setItem('user', JSON.stringify(userData));
+    } else {
+      await AsyncStorage.setItem('user', JSON.stringify(userData));
+    }
   };
 
-  const login = async (credentials: Credentials) => {
+  const login = async (credentials: Credentials, shouldRemember = false) => {
     try {
       const response = await apiLogin(credentials);
-      
       const userData = response.user;
-      
-      if (Platform.OS === 'web') {
-        localStorage.setItem('user', JSON.stringify(userData));
-      } else {
-        await AsyncStorage.setItem('user', JSON.stringify(userData));
+      setIsPersistentSession(shouldRemember);
+      await saveToken(response.access, response.refresh, shouldRemember);
+      await persistUser(userData, shouldRemember);
+      if (shouldRemember) {
+        setSavedAccounts(await rememberAccount(userData, response.access, response.refresh));
       }
-
       setUser(userData);
     } catch (error: any) {
       console.error('❌ [AuthContext] Login error:', error);
@@ -77,19 +115,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const register = async (data: RegisterData): Promise<{ success: boolean; error?: string }> => {
+  const register = async (data: RegisterData): Promise<{ success: boolean; requiresVerification?: boolean; error?: string }> => {
     try {
       const response = await apiRegister(data);
       const userData = response.user;
 
-      if (Platform.OS === 'web') {
-        localStorage.setItem('user', JSON.stringify(userData));
-      } else {
-        await AsyncStorage.setItem('user', JSON.stringify(userData));
+      if (response.access && userData) {
+        await saveToken(response.access, response.refresh);
+        setIsPersistentSession(true);
+        await persistUser(userData, true);
+        setUser(userData);
       }
 
-      setUser(userData);
-      return { success: true };
+      return { success: true, requiresVerification: !response.access };
     } catch (error: any) {
       const errorMsg = error?.message || 'Błąd rejestracji';
       return { success: false, error: errorMsg };
@@ -97,9 +135,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
+    const accountId = user ? String(user.id) : null;
     try {
       await apiLogout();
     } finally {
+      if (accountId) setSavedAccounts(await forgetAccount(accountId));
       if (Platform.OS === 'web') {
         localStorage.removeItem('user');
         localStorage.removeItem('access_token');
@@ -109,6 +149,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       setUser(null);
     }
+  };
+
+  const switchAccount = async (accountId: string) => {
+    const account = savedAccounts.find((item) => item.id === accountId);
+    if (!account) throw new Error('Nie znaleziono zapisanego konta.');
+    await saveToken(account.accessToken, account.refreshToken);
+    setIsPersistentSession(true);
+    await persistUser(account.user, true);
+    setUser(account.user);
+    try {
+      const currentUser = await getCurrentUser();
+      await persistUser(currentUser, true);
+      setUser(currentUser);
+    } catch {
+      setSavedAccounts(await forgetAccount(accountId));
+      throw new Error('Sesja wygasła. Zaloguj się ponownie.');
+    }
+  };
+
+  const removeSavedAccount = async (accountId: string) => {
+    setSavedAccounts(await forgetAccount(accountId));
   };
 
   const updateUser = async (userData: Partial<User>) => {
@@ -146,6 +207,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user, 
       isLoggedIn: !!user, 
       login, 
+      savedAccounts,
+      switchAccount,
+      removeSavedAccount,
       register, 
       logout, 
       updateUser, 

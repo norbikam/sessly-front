@@ -41,7 +41,7 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
 
   // Przeładuj ulubione, gdy użytkownik się loguje/wylogowuje
   useEffect(() => {
-    loadFavorites();
+    void Promise.resolve().then(loadFavorites);
   }, [loadFavorites]);
 
   const isFavorite = (businessId: string): boolean => {

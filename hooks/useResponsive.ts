@@ -22,6 +22,7 @@ export const useResponsive = () => {
     isTablet: screenSize === 'tablet',
     isDesktop: screenSize === 'desktop',
     isWide: screenSize === 'wide',
+    isTabletUp: width >= Breakpoints.tablet,
     // Helper functions for conditional rendering
     whenMobile: (mobileValue: any, otherValue: any = null) =>
       screenSize === 'mobile' ? mobileValue : otherValue,
