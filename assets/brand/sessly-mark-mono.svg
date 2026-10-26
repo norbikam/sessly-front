@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Sessly">
+  <g fill="none" stroke="#111827" stroke-width="52" stroke-linejoin="round">
+    <rect x="308" y="268" width="408" height="488" rx="58"/>
+    <path d="M308 364h408"/>
+  </g>
+  <rect x="400" y="224" width="32" height="72" rx="16" fill="#111827"/>
+  <rect x="592" y="224" width="32" height="72" rx="16" fill="#111827"/>
+  <text
+    x="512"
+    y="590"
+    text-anchor="middle"
+    dominant-baseline="middle"
+    fill="#111827"
+    font-family="Avenir Next, Helvetica Neue, Helvetica, Arial, sans-serif"
+    font-size="280"
+    font-weight="800"
+    letter-spacing="-8"
+  >S</text>
+  <circle cx="616" cy="636" r="30" fill="none" stroke="#111827" stroke-width="20"/>
+  <path d="M604 636l8 8 16-18" fill="none" stroke="#111827" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

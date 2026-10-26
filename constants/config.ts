@@ -18,7 +18,7 @@ export const TERMS_URL =
 export const SUPPORT_EMAIL =
   process.env.EXPO_PUBLIC_SUPPORT_EMAIL ||
   extra.supportEmail ||
-  'support@sessly.com';
+  'support@sessly.pl';
 
 /** Hide phone verify UI until Twilio (or other SMS) is live. */
 export const PHONE_VERIFY_ENABLED =
