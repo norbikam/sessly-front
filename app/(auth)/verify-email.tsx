@@ -4,17 +4,28 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { resendVerificationCode, verifyEmail } from '../../api/verification';
+import { useAuth } from '../../contexts/AuthContext';
 import Colors from '../../constants/Colors';
 import { notify } from '../../utils/notify';
 
+const RESEND_COOLDOWN_SEC = 60;
+
 export default function VerifyEmailScreen() {
   const router = useRouter();
+  const { isLoggedIn, refreshUser } = useAuth();
   const params = useLocalSearchParams<{ email?: string; code?: string; token?: string }>();
   const [email, setEmail] = useState(params.email || '');
   const [code, setCode] = useState(params.code || '');
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
   const [autoTried, setAutoTried] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    if (cooldown <= 0) return undefined;
+    const timer = setTimeout(() => setCooldown((value) => Math.max(0, value - 1)), 1000);
+    return () => clearTimeout(timer);
+  }, [cooldown]);
 
   const submit = async (opts?: { token?: string; email?: string; code?: string }) => {
     const token = (opts?.token ?? params.token ?? '').toString().trim();
@@ -27,8 +38,14 @@ export default function VerifyEmailScreen() {
     try {
       setLoading(true);
       await verifyEmail({ email: mail, code: pin, token });
-      notify('Konto aktywne', 'Adres e-mail został potwierdzony. Możesz umawiać wizyty.');
-      router.replace('/(auth)/login');
+      if (isLoggedIn) {
+        await refreshUser();
+        notify('Konto aktywne', 'Adres e-mail został potwierdzony.');
+        router.replace('/(tabs)');
+      } else {
+        notify('Konto aktywne', 'Adres e-mail został potwierdzony. Możesz umawiać wizyty.');
+        router.replace('/(auth)/login');
+      }
     } catch (error: any) {
       notify('Błąd weryfikacji', error?.message || 'Kod lub link jest nieprawidłowy.');
     } finally {
@@ -51,11 +68,12 @@ export default function VerifyEmailScreen() {
   }, [params.token, params.email, params.code, autoTried]);
 
   const resend = async () => {
-    if (!email.trim()) return;
+    if (!email.trim() || cooldown > 0) return;
     try {
       setResending(true);
       await resendVerificationCode(email);
-      notify('Kod wysłany', 'Sprawdź skrzynkę (lokalnie: terminal Django / konsola).');
+      setCooldown(RESEND_COOLDOWN_SEC);
+      notify('Kod wysłany', 'Sprawdź skrzynkę e-mail.');
     } catch (error: any) {
       notify('Błąd', error?.message || 'Nie udało się wysłać kodu.');
     } finally {
@@ -94,8 +112,14 @@ export default function VerifyEmailScreen() {
         <TouchableOpacity style={styles.button} onPress={() => submit()} disabled={loading}>
           {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Potwierdź konto</Text>}
         </TouchableOpacity>
-        <TouchableOpacity style={styles.resend} onPress={resend} disabled={resending}>
-          <Text style={styles.resendText}>{resending ? 'Wysyłanie…' : 'Wyślij kod ponownie'}</Text>
+        <TouchableOpacity style={styles.resend} onPress={resend} disabled={resending || cooldown > 0}>
+          <Text style={[styles.resendText, (resending || cooldown > 0) && styles.resendDisabled]}>
+            {cooldown > 0
+              ? `Wyślij ponownie za ${cooldown}s`
+              : resending
+                ? 'Wysyłanie…'
+                : 'Wyślij kod ponownie'}
+          </Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -115,4 +139,5 @@ const styles = StyleSheet.create({
   buttonText: { color: '#fff', fontWeight: '800' },
   resend: { alignItems: 'center', marginTop: 18, padding: 8 },
   resendText: { color: Colors.light.accent, fontWeight: '700' },
+  resendDisabled: { opacity: 0.55 },
 });

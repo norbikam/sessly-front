@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Pressable, Text, View, StyleSheet } from 'react-native';
 import { Stack, type ErrorBoundaryProps } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { EmailVerificationBanner } from '../components/EmailVerificationBanner';
 import { AuthProvider } from '../contexts/AuthContext';
 import { FavoritesProvider } from '../contexts/FavoritesContext';
 import { LocaleProvider } from '../contexts/LocaleContext';
@@ -33,10 +34,15 @@ export default function RootLayout() {
         <LocationProvider>
           <FavoritesProvider>
             <NotificationsProvider>
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-              </Stack>
+              <View style={styles.root}>
+                <EmailVerificationBanner />
+                <View style={styles.stack}>
+                  <Stack screenOptions={{ headerShown: false }}>
+                    <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                    <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+                  </Stack>
+                </View>
+              </View>
             </NotificationsProvider>
           </FavoritesProvider>
         </LocationProvider>
@@ -46,6 +52,12 @@ export default function RootLayout() {
 }
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
+  stack: {
+    flex: 1,
+  },
   boundary: {
     flex: 1,
     justifyContent: 'center',

@@ -113,6 +113,13 @@ export default function RegisterScreen() {
       return;
     }
 
+    if (!phoneNumber.trim()) {
+      const msg = 'Podaj numer telefonu.';
+      setFormError(msg);
+      notify('Błąd', msg);
+      return;
+    }
+
     const cleanNip = digitsOnly(nip);
     if (role === 'business_owner') {
       if (cleanNip.length !== 10) {
@@ -121,8 +128,8 @@ export default function RegisterScreen() {
         notify('Błąd', msg);
         return;
       }
-      if (!phoneNumber.trim() || !legalAddress.trim() || !legalCity.trim() || !legalPostalCode.trim()) {
-        const msg = 'Uzupełnij telefon oraz adres do rozliczeń (ulica, miasto, kod).';
+      if (!legalAddress.trim() || !legalCity.trim() || !legalPostalCode.trim()) {
+        const msg = 'Uzupełnij adres do rozliczeń (ulica, miasto, kod).';
         setFormError(msg);
         notify('Błąd', msg);
         return;
@@ -143,13 +150,13 @@ export default function RegisterScreen() {
       last_name: lastName,
       password,
       password2: passwordConfirm,
-      role
+      role,
+      phone_number: phoneNumber.trim(),
     };
 
     if (role === 'business_owner') {
       payload.organization_name = organizationName.trim() || `${firstName} ${lastName}`.trim() || cleanUsername;
       payload.nip = cleanNip;
-      payload.phone_number = phoneNumber.trim();
       payload.legal_address_line1 = legalAddress.trim();
       payload.legal_city = legalCity.trim();
       payload.legal_postal_code = legalPostalCode.trim();
@@ -231,6 +238,14 @@ export default function RegisterScreen() {
             autoCorrect={false}
           />
           <FormField label="E-mail *" icon="mail-outline" placeholder="anna@example.com" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
+          <FormField
+            label="Telefon *"
+            icon="call-outline"
+            placeholder="+48 500 000 000"
+            value={phoneNumber}
+            onChangeText={setPhoneNumber}
+            keyboardType="phone-pad"
+          />
           
           <View style={styles.row}>
             <FormField label="Imię" containerStyle={styles.rowField} placeholder="Anna" value={firstName} onChangeText={setFirstName} />
@@ -245,7 +260,7 @@ export default function RegisterScreen() {
           <View style={styles.formCard}>
             <Text style={styles.sectionTitle}>Dane do rozliczeń</Text>
             <Text style={styles.businessHint}>
-              To dane firmy (NIP, telefon, adres rozliczeniowy). Adres miejsca wykonywania usług dodasz osobno po zalogowaniu.
+              To dane firmy (NIP, adres rozliczeniowy). Adres miejsca wykonywania usług dodasz osobno po zalogowaniu.
             </Text>
             <View style={styles.nipRow}>
               <FormField
@@ -274,14 +289,6 @@ export default function RegisterScreen() {
               placeholder="np. Studio Urody Anna"
               value={organizationName}
               onChangeText={setOrganizationName}
-            />
-            <FormField
-              label="Telefon firmowy *"
-              icon="call-outline"
-              placeholder="+48 500 000 000"
-              value={phoneNumber}
-              onChangeText={setPhoneNumber}
-              keyboardType="phone-pad"
             />
             <FormField
               label="Ulica i numer (rozliczenia) *"
