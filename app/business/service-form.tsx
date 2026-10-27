@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, TextInput, Alert,
+  View, Text, StyleSheet, TouchableOpacity, TextInput,
   ActivityIndicator, KeyboardAvoidingView, Modal, Platform, ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
