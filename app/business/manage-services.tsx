@@ -1,12 +1,17 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, Alert, ScrollView,
+  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { router, useFocusEffect } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
+import {
+  NestableDraggableFlatList,
+  NestableScrollContainer,
+  RenderItemParams,
+  ScaleDecorator,
+} from 'react-native-draggable-flatlist';
 import {
   deleteService,
   getMyServices,
@@ -36,6 +41,10 @@ type ServiceRowProps = {
   individuallyPricedLabel: string;
   activeLabel: string;
   inactiveLabel: string;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
   onToggle: (value: boolean) => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -52,6 +61,10 @@ function ServiceRow({
   individuallyPricedLabel,
   activeLabel,
   inactiveLabel,
+  canMoveUp,
+  canMoveDown,
+  onMoveUp,
+  onMoveDown,
   onToggle,
   onEdit,
   onDelete,
@@ -62,16 +75,33 @@ function ServiceRow({
   return (
     <ScaleDecorator>
       <View style={[styles.serviceItem, inactive && styles.serviceItemInactive, isActive && styles.serviceItemDragging]}>
-        <TouchableOpacity
-          onLongPress={drag}
-          onPressIn={Platform.OS === 'web' ? drag : undefined}
-          delayLongPress={Platform.OS === 'web' ? 1 : 140}
-          style={styles.dragHandle}
-          hitSlop={10}
-          accessibilityLabel="Zmień kolejność"
-        >
-          <Ionicons name="menu" size={22} color={isActive ? Colors.light.accent : '#64748B'} />
-        </TouchableOpacity>
+        <View style={styles.orderControls}>
+          <TouchableOpacity
+            onLongPress={drag}
+            delayLongPress={120}
+            style={styles.dragHandle}
+            hitSlop={8}
+            accessibilityLabel="Przeciągnij, żeby zmienić kolejność"
+          >
+            <Ionicons name="menu" size={20} color={isActive ? Colors.light.accent : '#64748B'} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.orderBtn, !canMoveUp && styles.orderBtnDisabled]}
+            disabled={!canMoveUp}
+            onPress={onMoveUp}
+            accessibilityLabel="Wyżej"
+          >
+            <Ionicons name="chevron-up" size={16} color={canMoveUp ? '#475569' : '#CBD5E1'} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.orderBtn, !canMoveDown && styles.orderBtnDisabled]}
+            disabled={!canMoveDown}
+            onPress={onMoveDown}
+            accessibilityLabel="Niżej"
+          >
+            <Ionicons name="chevron-down" size={16} color={canMoveDown ? '#475569' : '#CBD5E1'} />
+          </TouchableOpacity>
+        </View>
         <View style={styles.serviceIconContainer}>
           {showImage ? (
             <Image
@@ -237,25 +267,46 @@ export default function ManageServicesScreen() {
     void persistOrder(nextFlat.map((item, index) => ({ ...item, sort_order: index })));
   };
 
-  const renderService = ({ item, drag, isActive }: RenderItemParams<Service>) => (
-    <ServiceRow
-      item={item}
-      drag={drag}
-      isActive={isActive}
-      inactive={item.is_active === false}
-      toggling={togglingId === String(item.id)}
-      currency={currency}
-      language={language}
-      individuallyPricedLabel={t('booking.individuallyPriced')}
-      activeLabel={t('services.active')}
-      inactiveLabel={t('services.inactive')}
-      onToggle={(value) => void toggleActive(item, value)}
-      onEdit={() =>
-        router.push({ pathname: '/business/service-form', params: { id: String(item.id) } } as any)
-      }
-      onDelete={() => confirmDelete(item.id)}
-    />
-  );
+  const moveWithinGroup = (groupId: string, serviceId: string, direction: -1 | 1) => {
+    const group = serviceGroups.find((item) => item.id === groupId);
+    if (!group) return;
+    const index = group.services.findIndex((item) => String(item.id) === String(serviceId));
+    const nextIndex = index + direction;
+    if (index < 0 || nextIndex < 0 || nextIndex >= group.services.length) return;
+    const next = [...group.services];
+    const [row] = next.splice(index, 1);
+    next.splice(nextIndex, 0, row);
+    reorderGroup(groupId, next);
+  };
+
+  const renderService = (groupId: string, groupServices: Service[]) => (
+    { item, drag, isActive }: RenderItemParams<Service>,
+  ) => {
+    const index = groupServices.findIndex((row) => String(row.id) === String(item.id));
+    return (
+      <ServiceRow
+        item={item}
+        drag={drag}
+        isActive={isActive}
+        inactive={item.is_active === false}
+        toggling={togglingId === String(item.id)}
+        currency={currency}
+        language={language}
+        individuallyPricedLabel={t('booking.individuallyPriced')}
+        activeLabel={t('services.active')}
+        inactiveLabel={t('services.inactive')}
+        canMoveUp={index > 0}
+        canMoveDown={index >= 0 && index < groupServices.length - 1}
+        onMoveUp={() => moveWithinGroup(groupId, String(item.id), -1)}
+        onMoveDown={() => moveWithinGroup(groupId, String(item.id), 1)}
+        onToggle={(value) => void toggleActive(item, value)}
+        onEdit={() =>
+          router.push({ pathname: '/business/service-form', params: { id: String(item.id) } } as any)
+        }
+        onDelete={() => confirmDelete(item.id)}
+      />
+    );
+  };
 
   return (
     <GestureHandlerRootView style={styles.container}>
@@ -271,7 +322,7 @@ export default function ManageServicesScreen() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <NestableScrollContainer contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.actions}>
           <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/business/service-form' as any)}>
             <Ionicons name="add" size={18} color="#fff" />
@@ -300,7 +351,7 @@ export default function ManageServicesScreen() {
               {savingOrder
                 ? 'Zapisywanie kolejności…'
                 : Platform.OS === 'web'
-                  ? 'Przeciągnij ≡ myszką, żeby zmienić kolejność w kategorii.'
+                  ? 'Chwyć ≡ i przeciągnij w górę/dół (w obrębie kategorii).'
                   : t('services.dragHint')}
             </Text>
             {serviceGroups.map((group) => {
@@ -331,13 +382,12 @@ export default function ManageServicesScreen() {
                   </TouchableOpacity>
                   {!collapsed ? (
                     <View style={styles.groupBody}>
-                      <DraggableFlatList
+                      <NestableDraggableFlatList
                         data={group.services}
                         keyExtractor={(item) => String(item.id)}
                         onDragEnd={({ data }) => reorderGroup(group.id, data)}
-                        activationDistance={Platform.OS === 'web' ? 1 : 8}
-                        scrollEnabled={false}
-                        renderItem={renderService}
+                        activationDistance={Platform.OS === 'web' ? 4 : 10}
+                        renderItem={renderService(group.id, group.services)}
                       />
                     </View>
                   ) : null}
@@ -346,7 +396,7 @@ export default function ManageServicesScreen() {
             })}
           </>
         )}
-      </ScrollView>
+      </NestableScrollContainer>
     </GestureHandlerRootView>
   );
 }
@@ -393,10 +443,16 @@ const styles = StyleSheet.create({
   },
   serviceItemInactive: { opacity: 0.72, backgroundColor: '#F1F5F9' },
   serviceItemDragging: { borderColor: Colors.light.accent, backgroundColor: '#FAF8FF' },
+  orderControls: { alignItems: 'center', marginRight: 6, gap: 2 },
   dragHandle: {
-    width: 40, height: 48, alignItems: 'center', justifyContent: 'center', marginRight: 2,
-    borderRadius: 10, backgroundColor: '#EEF2FF',
+    width: 34, height: 28, alignItems: 'center', justifyContent: 'center',
+    borderRadius: 8, backgroundColor: '#EEF2FF',
   },
+  orderBtn: {
+    width: 34, height: 22, alignItems: 'center', justifyContent: 'center',
+    borderRadius: 7, backgroundColor: '#F1F5F9',
+  },
+  orderBtnDisabled: { opacity: 0.45 },
   serviceIconContainer: {
     width: 52, height: 52, borderRadius: 14, backgroundColor: '#F5F3FF',
     justifyContent: 'center', alignItems: 'center', marginRight: 12, overflow: 'hidden',
