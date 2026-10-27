@@ -9,7 +9,8 @@ import { goBackToApp } from '../../utils/navigation';
 import {
   getBusinessAppointments,
   confirmAppointment,
-  cancelBusinessAppointment
+  cancelBusinessAppointment,
+  proposeAppointmentTime,
 } from '../../api/appointments';
 import { Appointment, BusinessStaff, Service } from '../../types/api';
 import { useThemeColor } from '../../hooks/useThemeColor';
@@ -28,8 +29,10 @@ import {
   startOfDay,
 } from '../../components/business/MobileDayCalendar';
 import { ManualAppointmentModal } from '../../components/business/ManualAppointmentModal';
+import RescheduleModal from '../../components/appointments/RescheduleModal';
 import { getBusinessStaff, getMyServices } from '../../api/business';
 import { appointmentClientName, staffDisplayName } from '../../utils/staffName';
+import { formatApiError, notify } from '../../utils/notify';
 
 type MobileTab = 'calendar' | 'daylist' | 'pending' | 'completed' | 'cancelled';
 
@@ -60,6 +63,8 @@ export default function ScheduleScreen() {
   const [selectedDate, setSelectedDate] = useState(() => startOfDay(new Date()));
   const [selectedStaffId, setSelectedStaffId] = useState<string | null>(staffId ? String(staffId) : null);
   const [draftSlot, setDraftSlot] = useState<{ date: string; time: string } | null>(null);
+  const [proposeTarget, setProposeTarget] = useState<Appointment | null>(null);
+  const [proposeSubmitting, setProposeSubmitting] = useState(false);
 
   const backgroundColor = useThemeColor({}, 'background');
   const textColor = useThemeColor({}, 'text');
@@ -168,7 +173,7 @@ export default function ScheduleScreen() {
     const filtered = appointments.filter(appointment => {
       switch (activeFilter) {
         case 'pending':
-          return appointment.status === 'pending';
+          return appointment.status === 'pending' || appointment.status === 'proposed';
         case 'confirmed':
           return appointment.status === 'confirmed';
         case 'cancelled':
@@ -185,7 +190,9 @@ export default function ScheduleScreen() {
   const isCompletedList = activeFilter === 'completed';
 
   const pendingAppointments = useMemo(
-    () => appointments.filter((appointment) => appointment.status === 'pending'),
+    () => appointments.filter(
+      (appointment) => appointment.status === 'pending' || appointment.status === 'proposed',
+    ),
     [appointments]
   );
 
@@ -232,61 +239,95 @@ export default function ScheduleScreen() {
     try {
       setActionLoading(id);
       await confirmAppointment(businessSlug, id);
-      Alert.alert('Sukces', 'Wizyta została potwierdzona.');
+      notify('Sukces', 'Wizyta została potwierdzona.');
       loadSchedule();
-    } catch {
-      Alert.alert('Błąd', 'Nie udało się potwierdzić wizyty.');
+    } catch (e: any) {
+      notify('Błąd', formatApiError(e, 'Nie udało się potwierdzić wizyty.'));
     } finally {
       setActionLoading(null);
     }
   };
 
   const handleCancel = (id: string) => {
+    const run = async () => {
+      if (!businessSlug) return;
+      try {
+        setActionLoading(id);
+        await cancelBusinessAppointment(businessSlug, id);
+        notify('Anulowano', 'Wizyta została anulowana.');
+        loadSchedule();
+      } catch (e: any) {
+        notify('Błąd', formatApiError(e, 'Nie udało się anulować wizyty.'));
+      } finally {
+        setActionLoading(null);
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.confirm('Czy na pewno chcesz anulować tę wizytę?')) {
+        void run();
+      }
+      return;
+    }
     Alert.alert('Anuluj wizytę', 'Czy na pewno chcesz anulować tę wizytę?', [
       { text: 'Nie', style: 'cancel' },
-      {
-        text: 'Tak, anuluj',
-        style: 'destructive',
-        onPress: async () => {
-          if (!businessSlug) return;
-          try {
-            setActionLoading(id);
-            await cancelBusinessAppointment(businessSlug, id);
-            Alert.alert('Anulowano', 'Wizyta została anulowana.');
-            loadSchedule();
-          } catch {
-            Alert.alert('Błąd', 'Nie udało się anulować wizyty.');
-          } finally {
-            setActionLoading(null);
-          }
-        }
-      }
+      { text: 'Tak, anuluj', style: 'destructive', onPress: () => void run() },
     ]);
+  };
+
+  const handleProposeConfirm = async (date: string, time: string) => {
+    if (!businessSlug || !proposeTarget) return;
+    try {
+      setProposeSubmitting(true);
+      setActionLoading(String(proposeTarget.id));
+      await proposeAppointmentTime(businessSlug, String(proposeTarget.id), {
+        date,
+        start_time: time,
+      });
+      setProposeTarget(null);
+      notify('Wysłano', 'Klient dostał propozycję innego terminu.');
+      loadSchedule();
+    } catch (e: any) {
+      notify('Błąd', formatApiError(e, 'Nie udało się zaproponować terminu.'));
+    } finally {
+      setProposeSubmitting(false);
+      setActionLoading(null);
+    }
   };
 
   const handleAppointmentPress = (appointment: Appointment) => {
     const start = new Date(appointment.start);
+    const proposed = appointment.proposed_start
+      ? new Date(appointment.proposed_start).toLocaleString('pl-PL')
+      : null;
     const staff = staffDisplayName(appointment.staff);
     const details = [
       appointment.service?.name || 'Wizyta',
-      start.toLocaleString('pl-PL'),
+      `Termin: ${start.toLocaleString('pl-PL')}`,
+      proposed ? `Propozycja: ${proposed}` : null,
       appointmentClientName(appointment),
       staff ? `Pracownik: ${staff}` : 'Pracownik: nieprzypisany',
-    ].join('\n');
-    if (appointment.status === 'pending' && canManage) {
+    ].filter(Boolean).join('\n');
+    if ((appointment.status === 'pending' || appointment.status === 'proposed') && canManage) {
+      if (Platform.OS === 'web') {
+        window.alert(details);
+        return;
+      }
       Alert.alert('Oczekująca wizyta', details, [
         { text: 'Zamknij', style: 'cancel' },
         { text: 'Odrzuć', style: 'destructive', onPress: () => handleCancel(appointment.id) },
+        { text: 'Inny termin', onPress: () => setProposeTarget(appointment) },
         { text: 'Potwierdź', onPress: () => handleConfirm(appointment.id) },
       ]);
       return;
     }
-    Alert.alert(canManage ? 'Szczegóły wizyty' : 'Twoja wizyta', details);
+    notify(canManage ? 'Szczegóły wizyty' : 'Twoja wizyta', details);
   };
 
   const renderStatusBadge = (status?: string) => {
     const statusConfig = {
       pending: { bg: '#FEF3C7', text: '#D97706', label: 'Oczekująca' },
+      proposed: { bg: '#E0E7FF', text: '#4338CA', label: 'Propozycja' },
       confirmed: { bg: '#D1FAE5', text: '#059669', label: 'Potwierdzona' },
       cancelled: { bg: '#FEE2E2', text: '#DC2626', label: 'Anulowana' },
       completed: { bg: '#E0E7FF', text: '#2563EB', label: 'Zakończona' },
@@ -302,7 +343,7 @@ export default function ScheduleScreen() {
   };
 
   const renderAppointmentCard = ({ item }: { item: Appointment }) => {
-    const isPending = item.status === 'pending';
+    const needsAction = item.status === 'pending' || item.status === 'proposed';
     const isLoadingThis = actionLoading === String(item.id);
 
     const clientName = appointmentClientName(item);
@@ -315,6 +356,15 @@ export default function ScheduleScreen() {
     const dateString = appointmentDate
       ? appointmentDate.toLocaleDateString('pl-PL', { weekday: 'short', month: 'short', day: 'numeric' })
       : '';
+    const proposedLabel = item.proposed_start
+      ? new Date(item.proposed_start).toLocaleString('pl-PL', {
+          weekday: 'short',
+          day: 'numeric',
+          month: 'short',
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : null;
 
     return (
       <Card style={styles.appointmentCard} shadow="md">
@@ -334,6 +384,11 @@ export default function ScheduleScreen() {
             <Text style={[styles.serviceName, { color: Colors.light.textSecondary }]} numberOfLines={1}>
               {staffName ? `Pracownik: ${staffName}` : 'Pracownik: nieprzypisany'}
             </Text>
+            {proposedLabel ? (
+              <Text style={[styles.notesText, { color: '#4338CA' }]} numberOfLines={2}>
+                Propozycja: {proposedLabel}
+              </Text>
+            ) : null}
             {item.notes && (
               <Text style={[styles.notesText, { color: Colors.light.textTertiary }]} numberOfLines={2}>
                 {item.notes}
@@ -354,23 +409,33 @@ export default function ScheduleScreen() {
           </View>
         </View>
 
-        {isPending && canManage && (
-          <View style={styles.actionsContainer}>
+        {needsAction && canManage && (
+          <View style={styles.actionsWrap}>
+            <View style={styles.actionsContainer}>
+              <Button
+                title="Odrzuć"
+                variant="outline"
+                size="sm"
+                onPress={() => handleCancel(String(item.id))}
+                disabled={isLoadingThis}
+                style={styles.declineButton}
+              />
+              <Button
+                title="Potwierdź"
+                variant="primary"
+                size="sm"
+                onPress={() => handleConfirm(String(item.id))}
+                loading={isLoadingThis}
+                style={styles.confirmButton}
+              />
+            </View>
             <Button
-              title="Odrzuć"
+              title="Zaproponuj inny termin"
               variant="outline"
               size="sm"
-              onPress={() => handleCancel(String(item.id))}
+              onPress={() => setProposeTarget(item)}
               disabled={isLoadingThis}
-              style={styles.declineButton}
-            />
-            <Button
-              title="Potwierdź"
-              variant="primary"
-              size="sm"
-              onPress={() => handleConfirm(String(item.id))}
-              loading={isLoadingThis}
-              style={styles.confirmButton}
+              style={styles.proposeButton}
             />
           </View>
         )}
@@ -632,6 +697,18 @@ export default function ScheduleScreen() {
           onCreated={loadSchedule}
         />
       ) : null}
+      <RescheduleModal
+        visible={Boolean(proposeTarget)}
+        appointment={proposeTarget}
+        submitting={proposeSubmitting}
+        title="Zaproponuj inny termin"
+        hint="Klient dostanie powiadomienie i będzie mógł zaakceptować albo odrzucić propozycję. Pierwotny termin zostaje do jego odpowiedzi."
+        confirmLabel="Wyślij propozycję"
+        onClose={() => {
+          if (!proposeSubmitting) setProposeTarget(null);
+        }}
+        onConfirm={handleProposeConfirm}
+      />
     </View>
   );
 }
@@ -789,10 +866,13 @@ const styles = StyleSheet.create({
     fontWeight: Typography.fontWeight.bold,
     textTransform: 'uppercase',
   },
-  actionsContainer: {
-    flexDirection: 'row',
+  actionsWrap: {
     padding: Spacing.md,
     paddingTop: 0,
+    gap: Spacing.sm,
+  },
+  actionsContainer: {
+    flexDirection: 'row',
     gap: Spacing.sm,
   },
   declineButton: {
@@ -800,6 +880,9 @@ const styles = StyleSheet.create({
   },
   confirmButton: {
     flex: 1,
+  },
+  proposeButton: {
+    width: '100%',
   },
   emptyContainer: {
     alignItems: 'center',

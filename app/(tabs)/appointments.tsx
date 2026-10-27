@@ -17,6 +17,8 @@ import {
   getUserAppointments,
   cancelAppointment,
   rescheduleAppointment,
+  acceptAppointmentProposal,
+  declineAppointmentProposal,
 } from '../../api/appointments';
 import { payAppointmentDeposit } from '../../api/payments';
 import { Appointment } from '../../types/api';
@@ -162,6 +164,45 @@ export default function AppointmentsScreen() {
     } finally {
       setRescheduleSubmitting(false);
     }
+  };
+
+  const handleAcceptProposal = async (appointment: Appointment) => {
+    try {
+      await acceptAppointmentProposal(String(appointment.id));
+      fetchAppointments();
+      const okMsg = 'Zaakceptowano nowy termin — wizyta jest potwierdzona.';
+      if (Platform.OS === 'web') window.alert(okMsg);
+      else Alert.alert('Gotowe', okMsg);
+    } catch (e: any) {
+      const errorMessage = apiErrorMessage(e, 'Nie udało się zaakceptować propozycji');
+      if (Platform.OS === 'web') window.alert(`Błąd: ${errorMessage}`);
+      else Alert.alert('Błąd', errorMessage);
+    }
+  };
+
+  const handleDeclineProposal = async (appointment: Appointment) => {
+    const confirmMessage = 'Odrzucić propozycję salonu i wrócić do pierwotnego terminu?';
+    const run = async () => {
+      try {
+        await declineAppointmentProposal(String(appointment.id));
+        fetchAppointments();
+        const okMsg = 'Propozycja odrzucona. Salon zobaczy ponownie oryginalny termin.';
+        if (Platform.OS === 'web') window.alert(okMsg);
+        else Alert.alert('Gotowe', okMsg);
+      } catch (e: any) {
+        const errorMessage = apiErrorMessage(e, 'Nie udało się odrzucić propozycji');
+        if (Platform.OS === 'web') window.alert(`Błąd: ${errorMessage}`);
+        else Alert.alert('Błąd', errorMessage);
+      }
+    };
+    if (Platform.OS === 'web') {
+      if (window.confirm(confirmMessage)) void run();
+      return;
+    }
+    Alert.alert('Odrzuć propozycję', confirmMessage, [
+      { text: 'Anuluj', style: 'cancel' },
+      { text: 'Odrzuć', style: 'destructive', onPress: () => void run() },
+    ]);
   };
 
   const handlePayDeposit = async (appointment: Appointment) => {
@@ -333,6 +374,8 @@ export default function AppointmentsScreen() {
             appointment={item}
             onCancel={handleCancelAppointment}
             onReschedule={setRescheduleTarget}
+            onAcceptProposal={handleAcceptProposal}
+            onDeclineProposal={handleDeclineProposal}
             onPayDeposit={handlePayDeposit}
             onBusinessPress={handleBusinessPress}
           />

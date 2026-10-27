@@ -16,7 +16,7 @@ export interface AppointmentService {
 }
 
 export interface AppointmentFilters {
-  status?: 'pending' | 'confirmed' | 'cancelled' | 'completed';
+  status?: 'pending' | 'proposed' | 'confirmed' | 'cancelled' | 'completed';
   time?: 'upcoming' | 'past';
 }
 
@@ -275,7 +275,7 @@ export const deleteAppointment = async (appointmentId: string): Promise<void> =>
 export const getBusinessAppointments = async (
   businessSlug: string,
   filters?: {
-    status?: 'pending' | 'confirmed' | 'cancelled' | 'completed';
+    status?: 'pending' | 'proposed' | 'confirmed' | 'cancelled' | 'completed';
     start_date?: string;
     end_date?: string;
     staff_id?: string;
@@ -344,6 +344,38 @@ export const confirmAppointment = async (
     console.error('❌ [confirmAppointment] Error:', error);
     throw error;
   }
+};
+
+export const proposeAppointmentTime = async (
+  businessSlug: string,
+  appointmentId: string,
+  data: { date: string; start_time: string; staff_id?: string },
+): Promise<Appointment> => {
+  const response = await apiClient.post<Appointment>(
+    `/businesses/${businessSlug}/appointments/${appointmentId}/propose/`,
+    data,
+  );
+  return response.data;
+};
+
+export const acceptAppointmentProposal = async (
+  appointmentId: string,
+): Promise<Appointment> => {
+  const response = await apiClient.post<any>(
+    `/users/appointments/${appointmentId}/accept-proposal/`,
+  );
+  if (response.data?.data) return response.data.data as Appointment;
+  return response.data as Appointment;
+};
+
+export const declineAppointmentProposal = async (
+  appointmentId: string,
+): Promise<Appointment> => {
+  const response = await apiClient.post<any>(
+    `/users/appointments/${appointmentId}/decline-proposal/`,
+  );
+  if (response.data?.data) return response.data.data as Appointment;
+  return response.data as Appointment;
 };
 
 export const completeAppointment = async (

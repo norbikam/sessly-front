@@ -11,6 +11,8 @@ export const getStatusInfo = (status: string) => {
       return { label: 'Potwierdzona', color: '#10b981', bg: '#d1fae5' };
     case 'pending':
       return { label: 'Oczekująca', color: '#f59e0b', bg: '#fef3c7' };
+    case 'proposed':
+      return { label: 'Propozycja terminu', color: '#4338CA', bg: '#E0E7FF' };
     case 'cancelled':
       return { label: 'Anulowana', color: '#ef4444', bg: '#fee2e2' };
     case 'completed':
@@ -24,6 +26,8 @@ interface AppointmentCardProps {
   appointment: Appointment;
   onCancel: (id: string) => void;
   onReschedule: (appointment: Appointment) => void;
+  onAcceptProposal?: (appointment: Appointment) => void;
+  onDeclineProposal?: (appointment: Appointment) => void;
   onPayDeposit?: (appointment: Appointment) => void;
   onBusinessPress: (slug: string) => void;
 }
@@ -32,13 +36,19 @@ export default function AppointmentCard({
   appointment,
   onCancel,
   onReschedule,
+  onAcceptProposal,
+  onDeclineProposal,
   onPayDeposit,
   onBusinessPress,
 }: AppointmentCardProps) {
   const statusInfo = getStatusInfo(appointment.status || 'pending');
   const startDate = appointment.start ? new Date(appointment.start) : null;
+  const proposedDate = appointment.proposed_start
+    ? new Date(appointment.proposed_start)
+    : null;
   const now = new Date();
   const isFuture = startDate ? startDate > now : false;
+  const hasProposal = appointment.status === 'proposed' && Boolean(proposedDate);
   const policyAllows =
     typeof appointment.can_change === 'boolean'
       ? appointment.can_change
@@ -58,6 +68,15 @@ export default function AppointmentCard({
         minute: '2-digit',
       })
     : 'Termin nieustalony';
+  const formattedProposed = proposedDate
+    ? proposedDate.toLocaleString('pl-PL', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : null;
 
   const businessName =
     appointment.business_name ||
@@ -122,8 +141,19 @@ export default function AppointmentCard({
 
       <View style={styles.detailRow}>
         <Ionicons name="calendar-outline" size={18} color="#666" />
-        <Text style={styles.detailText}>{formattedDate}</Text>
+        <Text style={styles.detailText}>
+          {hasProposal ? `Dotychczas: ${formattedDate}` : formattedDate}
+        </Text>
       </View>
+
+      {formattedProposed ? (
+        <View style={styles.detailRow}>
+          <Ionicons name="swap-horizontal-outline" size={18} color="#4338CA" />
+          <Text style={[styles.detailText, { color: '#4338CA', fontWeight: '700' }]}>
+            Propozycja: {formattedProposed}
+          </Text>
+        </View>
+      ) : null}
 
       {duration > 0 ? (
         <View style={styles.detailRow}>
@@ -158,6 +188,25 @@ export default function AppointmentCard({
 
       {CUSTOMER_DEPOSITS_ENABLED && appointment.deposit_status === 'paid' ? (
         <Text style={styles.paidHint}>Zaliczka opłacona</Text>
+      ) : null}
+
+      {hasProposal && onAcceptProposal && onDeclineProposal ? (
+        <View style={styles.actions}>
+          <TouchableOpacity
+            style={styles.rescheduleButton}
+            onPress={() => onAcceptProposal(appointment)}
+          >
+            <Ionicons name="checkmark-circle-outline" size={18} color={Colors.accent} />
+            <Text style={styles.rescheduleButtonText}>Akceptuj termin</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.cancelButton}
+            onPress={() => onDeclineProposal(appointment)}
+          >
+            <Ionicons name="close-circle-outline" size={18} color="#ef4444" />
+            <Text style={styles.cancelButtonText}>Odrzuć</Text>
+          </TouchableOpacity>
+        </View>
       ) : null}
 
       {canChange ? (

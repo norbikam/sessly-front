@@ -30,6 +30,9 @@ interface RescheduleModalProps {
   visible: boolean;
   appointment: Appointment | null;
   submitting?: boolean;
+  title?: string;
+  hint?: string;
+  confirmLabel?: string;
   onClose: () => void;
   onConfirm: (date: string, time: string) => void;
 }
@@ -38,6 +41,9 @@ export default function RescheduleModal({
   visible,
   appointment,
   submitting = false,
+  title = 'Zmień termin',
+  hint = 'Po zmianie terminu salon musi ponownie potwierdzić wizytę.',
+  confirmLabel = 'Zapisz nowy termin',
   onClose,
   onConfirm,
 }: RescheduleModalProps) {
@@ -95,7 +101,7 @@ export default function RescheduleModal({
       <View style={styles.overlay}>
         <View style={styles.sheet}>
           <View style={styles.header}>
-            <Text style={styles.title}>Zmień termin</Text>
+            <Text style={styles.title}>{title}</Text>
             <TouchableOpacity onPress={onClose} hitSlop={12}>
               <Ionicons name="close" size={24} color="#333" />
             </TouchableOpacity>
@@ -105,9 +111,7 @@ export default function RescheduleModal({
             {appointment?.service?.name || 'Wizyta'}
             {appointment?.business_name ? ` · ${appointment.business_name}` : ''}
           </Text>
-          <Text style={styles.hint}>
-            Po zmianie terminu salon musi ponownie potwierdzić wizytę.
-          </Text>
+          <Text style={styles.hint}>{hint}</Text>
 
           <ScrollView showsVerticalScrollIndicator={false}>
             <Calendar
@@ -174,7 +178,7 @@ export default function RescheduleModal({
             {submitting ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.confirmText}>Zapisz nowy termin</Text>
+              <Text style={styles.confirmText}>{confirmLabel}</Text>
             )}
           </TouchableOpacity>
         </View>

@@ -218,11 +218,13 @@ export interface Appointment {
   customer_first_name?: string;
   customer_last_name?: string;
   staff?: BusinessStaff | string;
-  status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
+  status: 'pending' | 'proposed' | 'confirmed' | 'cancelled' | 'completed';
   source?: 'app' | 'phone' | 'walk_in';
   guest_name?: string;
   start: string; // ISO datetime
   end: string; // ISO datetime
+  proposed_start?: string | null;
+  proposed_end?: string | null;
   notes?: string;
   google_event_id?: string;
   created_at: string;

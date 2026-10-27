@@ -243,6 +243,12 @@ export default function AppointmentDetailScreen() {
       icon: 'time-outline',
       bgColor: '#fef3c7'
     },
+    proposed: {
+      label: 'Propozycja terminu',
+      color: '#4338CA',
+      icon: 'swap-horizontal-outline',
+      bgColor: '#E0E7FF',
+    },
     confirmed: { 
       label: 'Potwierdzona', 
       color: '#10b981', 

@@ -101,7 +101,7 @@ export function CalendarGrid({ appointments, onAppointmentPress, daysToShow }: P
                 const dayIndex = days.findIndex((day) => sameDay(day, start));
                 const minutes = (start.getHours() - START_HOUR) * 60 + start.getMinutes();
                 const duration = Math.max(30, (end.getTime() - start.getTime()) / 60000);
-                const statusColor = appointment.status === 'pending'
+                const statusColor = appointment.status === 'pending' || appointment.status === 'proposed'
                   ? '#F59E0B'
                   : appointment.status === 'confirmed'
                     ? '#10B981'

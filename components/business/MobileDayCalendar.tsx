@@ -52,7 +52,7 @@ export const minutesToTime = (total: number) => {
 };
 
 const statusColor = (status?: string) => {
-  if (status === 'pending') return '#F59E0B';
+  if (status === 'pending' || status === 'proposed') return '#F59E0B';
   if (status === 'completed') return '#6366F1';
   if (status === 'cancelled') return '#94A3B8';
   return '#7C3AED';
