@@ -208,7 +208,12 @@ export default function ManageServicesScreen() {
         <TouchableOpacity onPress={() => goBackToApp(router)} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color={Colors.light.text} />
         </TouchableOpacity>
-        <Text style={styles.title}>Cennik i usługi</Text>
+        <View style={styles.titleBlock}>
+          <Text style={styles.title}>Cennik i usługi</Text>
+          {!loading && services.length > 0 ? (
+            <Text style={styles.titleCount}>{services.length}</Text>
+          ) : null}
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -243,6 +248,7 @@ export default function ManageServicesScreen() {
               const collapsed = Boolean(collapsedCategories[group.id]);
               return (
                 <View key={group.id} style={styles.serviceGroup}>
+                  <View style={[styles.groupAccent, { backgroundColor: group.color }]} />
                   <TouchableOpacity
                     style={styles.groupHeader}
                     onPress={() =>
@@ -255,7 +261,9 @@ export default function ManageServicesScreen() {
                   >
                     <View style={[styles.groupDot, { backgroundColor: group.color }]} />
                     <Text style={styles.groupTitle}>{group.name}</Text>
-                    <Text style={styles.groupCount}>{group.services.length}</Text>
+                    <View style={styles.groupCountPill}>
+                      <Text style={styles.groupCount}>{group.services.length}</Text>
+                    </View>
                     <Ionicons
                       name={collapsed ? 'chevron-down' : 'chevron-up'}
                       size={18}
@@ -263,14 +271,16 @@ export default function ManageServicesScreen() {
                     />
                   </TouchableOpacity>
                   {!collapsed ? (
-                    <DraggableFlatList
-                      data={group.services}
-                      keyExtractor={(item) => String(item.id)}
-                      onDragEnd={({ data }) => reorderGroup(group.id, data)}
-                      activationDistance={6}
-                      scrollEnabled={false}
-                      renderItem={renderService}
-                    />
+                    <View style={styles.groupBody}>
+                      <DraggableFlatList
+                        data={group.services}
+                        keyExtractor={(item) => String(item.id)}
+                        onDragEnd={({ data }) => reorderGroup(group.id, data)}
+                        activationDistance={6}
+                        scrollEnabled={false}
+                        renderItem={renderService}
+                      />
+                    </View>
                   ) : null}
                 </View>
               );
@@ -290,7 +300,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: '#F1F5F9',
   },
   backBtn: { marginRight: 15 },
+  titleBlock: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
   title: { fontSize: 20, fontWeight: '800', color: Colors.light.text },
+  titleCount: {
+    minWidth: 28, height: 28, paddingHorizontal: 8, borderRadius: 999,
+    backgroundColor: '#EDE9FE', color: Colors.light.accent, overflow: 'hidden',
+    fontSize: 13, fontWeight: '800', textAlign: 'center', lineHeight: 28,
+  },
   scrollContent: { padding: 20, paddingBottom: 100 },
   actions: { flexDirection: 'row', gap: 10, marginBottom: 12 },
   actionBtn: {
@@ -303,15 +319,20 @@ const styles = StyleSheet.create({
     backgroundColor: '#EDE9FE', alignItems: 'center',
   },
   secondaryText: { color: Colors.light.accent, fontWeight: '800' },
-  dragHint: { color: '#64748B', fontSize: 12, fontWeight: '600', marginBottom: 14 },
+  dragHint: { color: '#64748B', fontSize: 12, fontWeight: '600', marginBottom: 16 },
   loadingContainer: { alignItems: 'center', marginTop: 40 },
   loadingText: { marginTop: 12, color: Colors.light.textSecondary, fontWeight: '500' },
-  serviceGroup: { marginBottom: 12 },
-  serviceItem: {
-    backgroundColor: '#fff', padding: 14, borderRadius: 16, marginBottom: 10,
-    flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#F1F5F9',
+  serviceGroup: {
+    marginBottom: 18, backgroundColor: '#fff', borderRadius: 18, overflow: 'hidden',
+    borderWidth: 1, borderColor: '#E2E8F0', position: 'relative',
   },
-  serviceItemInactive: { opacity: 0.72, backgroundColor: '#F8FAFC' },
+  groupAccent: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 4 },
+  groupBody: { paddingHorizontal: 10, paddingBottom: 8 },
+  serviceItem: {
+    backgroundColor: '#F8FAFC', padding: 14, borderRadius: 14, marginBottom: 8,
+    flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#EEF2F7',
+  },
+  serviceItemInactive: { opacity: 0.72, backgroundColor: '#F1F5F9' },
   serviceItemDragging: { borderColor: Colors.light.accent, backgroundColor: '#FAF8FF' },
   dragHandle: {
     width: 32, height: 40, alignItems: 'center', justifyContent: 'center', marginRight: 4,
@@ -322,11 +343,20 @@ const styles = StyleSheet.create({
   },
   serviceImage: { width: '100%', height: '100%', borderRadius: 12 },
   groupHeader: {
-    flexDirection: 'row', alignItems: 'center', marginBottom: 9, paddingHorizontal: 4, paddingVertical: 4,
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingLeft: 16, paddingRight: 14, paddingVertical: 14,
+    backgroundColor: '#F8FAFC', borderBottomWidth: 1, borderBottomColor: '#E2E8F0',
   },
-  groupDot: { width: 10, height: 10, borderRadius: 5, marginRight: 8 },
-  groupTitle: { flex: 1, color: '#334155', fontSize: 15, fontWeight: '800' },
-  groupCount: { color: '#94A3B8', fontSize: 12, marginLeft: 7, marginRight: 6 },
+  groupDot: { width: 12, height: 12, borderRadius: 6 },
+  groupTitle: {
+    flex: 1, color: '#0F172A', fontSize: 13, fontWeight: '800',
+    letterSpacing: 0.5, textTransform: 'uppercase',
+  },
+  groupCountPill: {
+    minWidth: 26, height: 26, paddingHorizontal: 8, borderRadius: 999,
+    backgroundColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center',
+  },
+  groupCount: { color: '#475569', fontSize: 12, fontWeight: '800' },
   serviceInfo: { flex: 1, paddingRight: 10 },
   serviceName: { fontSize: 16, fontWeight: '700', color: Colors.light.text, marginBottom: 4 },
   inactiveText: { color: '#64748B' },

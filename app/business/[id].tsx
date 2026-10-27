@@ -470,6 +470,7 @@ export default function BusinessDetailScreen() {
               const collapsed = Boolean(collapsedCategories[group.id]);
               return (
                 <View key={group.id} style={styles.serviceCategoryBlock}>
+                  <View style={[styles.serviceCategoryAccent, { backgroundColor: group.color }]} />
                   <TouchableOpacity
                     style={styles.serviceCategoryHeader}
                     onPress={() => toggleCategory(group.id)}
@@ -477,7 +478,9 @@ export default function BusinessDetailScreen() {
                   >
                     <View style={[styles.serviceCategoryDot, { backgroundColor: group.color }]} />
                     <Text style={styles.serviceCategoryTitle}>{group.name}</Text>
-                    <Text style={styles.serviceCategoryCount}>{group.services.length}</Text>
+                    <View style={styles.serviceCategoryCountPill}>
+                      <Text style={styles.serviceCategoryCount}>{group.services.length}</Text>
+                    </View>
                     <Ionicons
                       name={collapsed ? 'chevron-down' : 'chevron-up'}
                       size={18}
@@ -775,21 +778,43 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null),
   },
-  serviceCategoryBlock: { marginBottom: 10 },
+  serviceCategoryBlock: {
+    marginBottom: 18,
+    marginTop: 4,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  serviceCategoryAccent: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, zIndex: 1 },
   serviceCategoryHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 4,
+    paddingVertical: 14,
+    paddingLeft: 16,
+    paddingRight: 12,
+    backgroundColor: '#F1F5F9',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
   },
-  serviceCategoryDot: { width: 10, height: 10, borderRadius: 5 },
-  serviceCategoryTitle: { flex: 1, fontSize: 15, fontWeight: '800', color: '#334155' },
-  serviceCategoryCount: { fontSize: 12, fontWeight: '700', color: '#94A3B8', marginRight: 4 },
+  serviceCategoryDot: { width: 12, height: 12, borderRadius: 6 },
+  serviceCategoryTitle: {
+    flex: 1, fontSize: 13, fontWeight: '800', color: '#0F172A',
+    letterSpacing: 0.5, textTransform: 'uppercase',
+  },
+  serviceCategoryCountPill: {
+    minWidth: 26, height: 26, paddingHorizontal: 8, borderRadius: 999,
+    backgroundColor: '#E2E8F0', alignItems: 'center', justifyContent: 'center',
+  },
+  serviceCategoryCount: { fontSize: 12, fontWeight: '800', color: '#475569' },
   emptyServices: { alignItems: 'center', paddingVertical: 40, gap: 10 },
   serviceItem: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingVertical: 20, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E5E7EB'
+    paddingVertical: 18, paddingHorizontal: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E5E7EB',
   },
   serviceDetails: { flex: 1, paddingRight: 16 },
   serviceName: { fontSize: 17, fontWeight: '800', color: Colors.light.text, marginBottom: 6 },
