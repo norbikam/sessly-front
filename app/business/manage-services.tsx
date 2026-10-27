@@ -34,6 +34,7 @@ export default function ManageServicesScreen() {
   const [loading, setLoading] = useState(true);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [savingOrder, setSavingOrder] = useState(false);
+  const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
 
   const loadData = useCallback(async () => {
     if (!businessSlug) {
@@ -238,23 +239,42 @@ export default function ManageServicesScreen() {
             <Text style={styles.dragHint}>
               {savingOrder ? 'Zapisywanie kolejności…' : t('services.dragHint')}
             </Text>
-            {serviceGroups.map((group) => (
-              <View key={group.id} style={styles.serviceGroup}>
-                <View style={styles.groupHeader}>
-                  <View style={[styles.groupDot, { backgroundColor: group.color }]} />
-                  <Text style={styles.groupTitle}>{group.name}</Text>
-                  <Text style={styles.groupCount}>{group.services.length}</Text>
+            {serviceGroups.map((group) => {
+              const collapsed = Boolean(collapsedCategories[group.id]);
+              return (
+                <View key={group.id} style={styles.serviceGroup}>
+                  <TouchableOpacity
+                    style={styles.groupHeader}
+                    onPress={() =>
+                      setCollapsedCategories((current) => ({
+                        ...current,
+                        [group.id]: !current[group.id],
+                      }))
+                    }
+                    activeOpacity={0.75}
+                  >
+                    <View style={[styles.groupDot, { backgroundColor: group.color }]} />
+                    <Text style={styles.groupTitle}>{group.name}</Text>
+                    <Text style={styles.groupCount}>{group.services.length}</Text>
+                    <Ionicons
+                      name={collapsed ? 'chevron-down' : 'chevron-up'}
+                      size={18}
+                      color="#64748B"
+                    />
+                  </TouchableOpacity>
+                  {!collapsed ? (
+                    <DraggableFlatList
+                      data={group.services}
+                      keyExtractor={(item) => String(item.id)}
+                      onDragEnd={({ data }) => reorderGroup(group.id, data)}
+                      activationDistance={6}
+                      scrollEnabled={false}
+                      renderItem={renderService}
+                    />
+                  ) : null}
                 </View>
-                <DraggableFlatList
-                  data={group.services}
-                  keyExtractor={(item) => String(item.id)}
-                  onDragEnd={({ data }) => reorderGroup(group.id, data)}
-                  activationDistance={6}
-                  scrollEnabled={false}
-                  renderItem={renderService}
-                />
-              </View>
-            ))}
+              );
+            })}
           </>
         )}
       </ScrollView>
@@ -301,10 +321,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center', marginRight: 12,
   },
   serviceImage: { width: '100%', height: '100%', borderRadius: 12 },
-  groupHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 9, paddingHorizontal: 4 },
+  groupHeader: {
+    flexDirection: 'row', alignItems: 'center', marginBottom: 9, paddingHorizontal: 4, paddingVertical: 4,
+  },
   groupDot: { width: 10, height: 10, borderRadius: 5, marginRight: 8 },
-  groupTitle: { color: '#334155', fontSize: 15, fontWeight: '800' },
-  groupCount: { color: '#94A3B8', fontSize: 12, marginLeft: 7 },
+  groupTitle: { flex: 1, color: '#334155', fontSize: 15, fontWeight: '800' },
+  groupCount: { color: '#94A3B8', fontSize: 12, marginLeft: 7, marginRight: 6 },
   serviceInfo: { flex: 1, paddingRight: 10 },
   serviceName: { fontSize: 16, fontWeight: '700', color: Colors.light.text, marginBottom: 4 },
   inactiveText: { color: '#64748B' },

@@ -509,13 +509,6 @@ export default function ServiceFormScreen() {
                     <Text style={styles.sectionTitle}>{t('service.form.options')}</Text>
                     <Text style={styles.hint}>{t('service.form.optionsHint')}</Text>
                   </View>
-                  <TouchableOpacity
-                    style={styles.addOptionBtn}
-                    onPress={() => setOptions((current) => [...current, newOptionDraft()])}
-                  >
-                    <Ionicons name="add" size={18} color="#fff" />
-                    <Text style={styles.addOptionText}>{t('service.form.addOption')}</Text>
-                  </TouchableOpacity>
                 </View>
 
                 {options.map((option, index) => (
@@ -581,6 +574,14 @@ export default function ServiceFormScreen() {
                     </View>
                   </View>
                 ))}
+
+                <TouchableOpacity
+                  style={styles.addOptionBtnBottom}
+                  onPress={() => setOptions((current) => [...current, newOptionDraft()])}
+                >
+                  <Ionicons name="add" size={18} color="#fff" />
+                  <Text style={styles.addOptionText}>{t('service.form.addOption')}</Text>
+                </TouchableOpacity>
               </>
             ) : null}
 
@@ -787,11 +788,11 @@ const styles = StyleSheet.create({
   individualLink: { marginTop: 8 },
   individualLinkText: { fontSize: 12, fontWeight: '800', color: Colors.light.accent },
   optionsHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 8, marginBottom: 8 },
-  addOptionBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.light.accent,
-    height: 36, paddingHorizontal: 12, borderRadius: 12,
+  addOptionBtnBottom: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    backgroundColor: Colors.light.accent, height: 44, borderRadius: 14, marginBottom: 8,
   },
-  addOptionText: { color: '#fff', fontWeight: '800', fontSize: 12 },
+  addOptionText: { color: '#fff', fontWeight: '800', fontSize: 13 },
   optionCard: {
     backgroundColor: '#F8FAFC', borderRadius: 16, padding: 14, marginBottom: 12,
     borderWidth: 1, borderColor: '#E2E8F0',
