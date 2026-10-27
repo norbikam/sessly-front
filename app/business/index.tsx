@@ -277,7 +277,8 @@ export default function BusinessDashboard() {
               </Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.exitBtn} onPress={handleExitDashboard} accessibilityLabel="Wyloguj się">
-              <Ionicons name="log-out-outline" size={22} color="#fff" />
+              <Ionicons name="log-out-outline" size={20} color="#fff" />
+              <Text style={styles.exitBtnText}>Wyjście</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -622,15 +623,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   exitBtn: {
-    width: 44,
     height: 44,
+    paddingHorizontal: 12,
     borderRadius: 22,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 6,
     backgroundColor: 'rgba(255,255,255,0.16)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.22)',
   },
+  exitBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   avatarLetter: { color: '#fff', fontSize: 18, fontWeight: '800' },
   bizBadge: {
     flexDirection: 'row',

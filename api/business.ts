@@ -498,9 +498,8 @@ export const uploadBusinessLogo = async (
 ): Promise<Business> => {
   const form = new FormData();
   await appendUpload(form, 'logo_image', asset);
-  const response = await apiClient.patch<Business>(`/businesses/my-business/${id}/`, form, {
-    headers: { 'Content-Type': undefined as unknown as string },
-  });
+  // Let the client interceptor strip Content-Type so the multipart boundary is set.
+  const response = await apiClient.patch<Business>(`/businesses/my-business/${id}/`, form);
   return response.data;
 };
 

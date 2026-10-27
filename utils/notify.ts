@@ -20,8 +20,16 @@ export function formatApiError(error: any, fallback = "Sprawdź połączenie z s
   ) {
     return "Przesyłanie trwa zbyt długo. Sprawdź łącze albo spróbuj mniejszego zdjęcia.";
   }
+  if (
+    code === "ERR_NETWORK"
+    || /network error/i.test(rawMessage)
+  ) {
+    return "Połączenie z serwerem zerwane (często przy dużym zdjęciu). Spróbuj mniejszego pliku JPG/PNG.";
+  }
   const data = error?.response?.data;
-  if (data == null) return rawMessage || fallback;
+  if (data == null) {
+    return rawMessage && !/^network error$/i.test(rawMessage) ? rawMessage : fallback;
+  }
   if (typeof data === "string") {
     if (data.includes("<!doctype") || data.includes("<html")) {
       const status = error?.response?.status;

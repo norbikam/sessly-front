@@ -463,14 +463,12 @@ export default function ScheduleScreen() {
           <View style={[styles.desktopHeader, { backgroundColor: cardColor }]}>
               <View style={styles.desktopHeaderLeft}>
                 <TouchableOpacity
-                  onPress={() => {
-                    if (router.canGoBack()) goBackToApp(router, '/(tabs)');
-                    else router.replace('/(tabs)' as any);
-                  }}
+                  onPress={() => goBackToApp(router, '/business')}
                   style={styles.desktopBackButton}
-                  accessibilityLabel="Wróć"
+                  accessibilityLabel="Wróć do panelu"
                 >
-                  <Ionicons name="arrow-back" size={22} color={textColor} />
+                  <Ionicons name="arrow-back" size={22} color={Colors.light.text} />
+                  <Text style={styles.desktopBackLabel}>Wróć</Text>
                 </TouchableOpacity>
                 <View>
                   <Text style={[styles.desktopTitle, { color: textColor }]}>{canManage ? 'Grafik wizyt' : 'Mój grafik'}</Text>
@@ -571,11 +569,12 @@ export default function ScheduleScreen() {
         <>
           <View style={[styles.header, { backgroundColor: cardColor, paddingTop: insets.top + Spacing.sm }]}>
             <TouchableOpacity
-              onPress={() => goBackToApp(router, '/(tabs)')}
+              onPress={() => goBackToApp(router, '/business')}
               style={styles.backButton}
-              accessibilityLabel="Go back"
+              accessibilityLabel="Wróć do panelu"
             >
-              <Ionicons name="arrow-back" size={24} color={textColor} />
+              <Ionicons name="arrow-back" size={22} color={Colors.light.text} />
+              <Text style={styles.backLabel}>Wróć</Text>
             </TouchableOpacity>
             <Text style={[styles.title, { color: textColor }]}>{canManage ? 'Grafik' : 'Mój grafik'}</Text>
             <View style={styles.headerActions}>
@@ -733,8 +732,20 @@ const styles = StyleSheet.create({
   },
   backButton: {
     marginRight: Spacing.md,
-    padding: Spacing.xs,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
     borderRadius: BorderRadius.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.light.backgroundSecondary,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+  },
+  backLabel: {
+    color: Colors.light.text,
+    fontSize: 15,
+    fontWeight: Typography.fontWeight.semibold as any,
   },
   title: {
     fontSize: Typography.fontSize.xl,
@@ -923,12 +934,21 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   desktopBackButton: {
-    width: 40,
     height: 40,
+    paddingHorizontal: 12,
     borderRadius: BorderRadius.md,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.light.background,
+    gap: 6,
+    backgroundColor: Colors.light.backgroundSecondary,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+  },
+  desktopBackLabel: {
+    color: Colors.light.text,
+    fontSize: 15,
+    fontWeight: Typography.fontWeight.semibold as any,
   },
   desktopTitle: {
     fontSize: Typography.fontSize.xxxl,
