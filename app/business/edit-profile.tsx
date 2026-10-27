@@ -12,7 +12,7 @@ import Colors from '../../constants/Colors';
 import { CUSTOMER_DEPOSITS_ENABLED } from '../../constants/config';
 import { lookupBusinessRegistry, updateBusinessProfile, UploadAsset } from '../../api/business';
 import { goBackToApp } from '../../utils/navigation';
-import { notify } from '../../utils/notify';
+import { formatApiError, notify } from '../../utils/notify';
 import { useLocation } from '../../contexts/LocationContext';
 
 const BRAND_COLORS = [
@@ -176,10 +176,7 @@ export default function EditBusinessProfileScreen() {
       goBackToApp(router);
     } catch (e: any) {
       console.error('Błąd zapisu:', e?.response?.data || e);
-      notify(
-        'Błąd zapisu', 
-        e?.response?.data ? JSON.stringify(e.response.data) : 'Sprawdź połączenie z serwerem.'
-      );
+      notify('Błąd zapisu', formatApiError(e));
     } finally {
       setSaving(false);
     }
