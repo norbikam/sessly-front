@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { goBackToApp } from '../../utils/navigation';
 import {
   addServiceCategory,
   deleteServiceCategory,
@@ -126,7 +127,7 @@ export default function CategoriesScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => goBackToApp(router, '/business/manage-services')} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color={Colors.light.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Kategorie usług</Text>

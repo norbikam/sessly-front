@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { goBackToApp } from '../../utils/navigation';
 
 import Colors from '../../constants/Colors';
 import { useAuth } from '../../contexts/AuthContext';
@@ -45,7 +46,7 @@ export default function PreferencesScreen() {
         notify_promotions: promotions,
       } as any);
       if (updated) updateUser(updated);
-      router.back();
+      goBackToApp(router, '/(tabs)/account');
     } finally {
       setSaving(false);
     }
@@ -54,7 +55,7 @@ export default function PreferencesScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => goBackToApp(router, '/(tabs)/account')} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color={Colors.light.text} />
         </TouchableOpacity>
         <Text style={styles.title}>{t('account.preferences')}</Text>

@@ -1,10 +1,26 @@
-import type { Router } from 'expo-router';
+import { router } from 'expo-router';
+import { Platform } from 'react-native';
 
-/** Back if history exists; otherwise restore the tab shell (keeps bottom nav on web). */
-export function goBackToApp(router: Router, fallback: string = '/(tabs)') {
-  if (router.canGoBack()) {
-    router.back();
+type AppRouter = Pick<typeof router, 'back' | 'canGoBack' | 'replace'>;
+
+/**
+ * After a hard refresh on web, router.canGoBack() can be true from browser
+ * history while the in-app stack is empty — back then appears broken.
+ * Expo Router stores navigation index on history.state.idx.
+ */
+function canSafelyGoBack(nav: AppRouter): boolean {
+  if (!nav.canGoBack()) return false;
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return true;
+  const idx = (window.history.state as { idx?: number } | null)?.idx;
+  if (typeof idx === 'number') return idx > 0;
+  return false;
+}
+
+/** Back if in-app history exists; otherwise restore a known screen (keeps nav usable after refresh). */
+export function goBackToApp(nav: AppRouter = router, fallback: string = '/(tabs)') {
+  if (canSafelyGoBack(nav)) {
+    nav.back();
     return;
   }
-  router.replace(fallback as any);
+  nav.replace(fallback as any);
 }

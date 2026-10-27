@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { goBackToApp } from '../../utils/navigation';
 
 import { confirmPasswordReset, requestPasswordReset } from '../../api/verification';
 import Colors from '../../constants/Colors';
@@ -82,7 +83,7 @@ export default function ForgotPasswordScreen() {
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity style={styles.back} onPress={() => (step === 'reset' ? setStep('email') : router.back())}>
+      <TouchableOpacity style={styles.back} onPress={() => (step === 'reset' ? setStep('email') : goBackToApp(router, '/(auth)/login'))}>
         <Ionicons name="arrow-back" size={24} color={Colors.light.text} />
       </TouchableOpacity>
 

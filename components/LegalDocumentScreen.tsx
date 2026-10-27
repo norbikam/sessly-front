@@ -10,6 +10,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import Colors from '../constants/Colors';
+import { goBackToApp } from '../utils/navigation';
 
 type Props = {
   title: string;
@@ -23,10 +24,7 @@ export function LegalDocumentScreen({ title, body, showBack = true }: Props) {
       <View style={styles.header}>
         {showBack ? (
           <TouchableOpacity
-            onPress={() => {
-              if (router.canGoBack()) router.back();
-              else router.replace('/');
-            }}
+            onPress={() => goBackToApp(router, '/(tabs)')}
             style={styles.backBtn}
             accessibilityRole="button"
             accessibilityLabel="Wróć"

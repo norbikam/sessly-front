@@ -31,6 +31,8 @@ const parseOptionalAmount = (value: string) => {
   return Number.isFinite(parsed) ? parsed : NaN;
 };
 
+type PricingMode = 'simple' | 'variants';
+
 type OptionDraft = {
   key: string;
   id?: string;
@@ -72,6 +74,7 @@ export default function ServiceFormScreen() {
   const [showPromoCalendar, setShowPromoCalendar] = useState(false);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [priceIsIndicative, setPriceIsIndicative] = useState(false);
+  const [pricingMode, setPricingMode] = useState<PricingMode>('simple');
   const [options, setOptions] = useState<OptionDraft[]>([]);
 
   const load = useCallback(async () => {
@@ -107,24 +110,33 @@ export default function ServiceFormScreen() {
           setPromoUntil(match.promotion_valid_until || '');
           setPriceIsIndicative(Boolean(match.price_is_indicative));
           setSelectedCategoryId(match.category?.id);
-          setOptions(
-            (match.options || [])
-              .filter((item) => item.is_active !== false)
-              .map((item, index) => {
-                const optionDual = resolveDualPrices(
-                  item.price_amount == null ? null : Number(item.price_amount),
-                  item.price_amount_eur == null ? null : Number(item.price_amount_eur),
-                );
-                return {
-                  key: item.id || `opt-${index}`,
-                  id: item.id,
-                  name: item.name || '',
-                  pricePln: optionDual.pln == null ? '' : String(optionDual.pln),
-                  priceEur: optionDual.eur == null ? '' : String(optionDual.eur),
-                  duration: item.duration_minutes ? String(item.duration_minutes) : '',
-                };
-              }),
-          );
+          const loadedOptions = (match.options || [])
+            .filter((item) => item.is_active !== false)
+            .map((item, index) => {
+              const optionDual = resolveDualPrices(
+                item.price_amount == null ? null : Number(item.price_amount),
+                item.price_amount_eur == null ? null : Number(item.price_amount_eur),
+              );
+              return {
+                key: item.id || `opt-${index}`,
+                id: item.id,
+                name: item.name || '',
+                pricePln: optionDual.pln == null ? '' : String(optionDual.pln),
+                priceEur: optionDual.eur == null ? '' : String(optionDual.eur),
+                duration: item.duration_minutes ? String(item.duration_minutes) : '',
+              };
+            });
+          const withVariants = loadedOptions.length > 0;
+          setPricingMode(withVariants ? 'variants' : 'simple');
+          setOptions(loadedOptions);
+          if (withVariants) {
+            // Variant services have no base price — amounts live on options only.
+            setPricePln('');
+            setPriceEur('');
+            setPromoPricePln('');
+            setPromoPriceEur('');
+            setPromoUntil('');
+          }
         }
       }
     } finally {
@@ -169,13 +181,31 @@ export default function ServiceFormScreen() {
     );
   };
 
-  const hasEnteredPrice = Boolean(pricePln.trim() || priceEur.trim());
+  const withVariants = pricingMode === 'variants';
+  const hasEnteredPrice = withVariants
+    ? options.some((option) => option.pricePln.trim() || option.priceEur.trim())
+    : Boolean(pricePln.trim() || priceEur.trim());
   const individuallyPriced = priceIsIndicative && !hasEnteredPrice;
   const showPriceFields = !individuallyPriced;
 
+  const setMode = (mode: PricingMode) => {
+    if (mode === pricingMode) return;
+    setPricingMode(mode);
+    if (mode === 'variants') {
+      setPricePln('');
+      setPriceEur('');
+      setPromoPricePln('');
+      setPromoPriceEur('');
+      setPromoUntil('');
+      setOptions((current) => (current.length ? current : [newOptionDraft(), newOptionDraft()]));
+      return;
+    }
+    setOptions([]);
+  };
+
   const handleToggleIndicative = (value: boolean) => {
     setPriceIsIndicative(value);
-    if (value && !pricePln.trim() && !priceEur.trim()) {
+    if (value && !hasEnteredPrice) {
       setPromoPricePln('');
       setPromoPriceEur('');
       setPromoUntil('');
@@ -199,18 +229,22 @@ export default function ServiceFormScreen() {
       Alert.alert('Brak danych', 'Wypełnij nazwę oraz czas trwania.');
       return;
     }
-    if (!individuallyPriced && !pricePln.trim() && !priceEur.trim()) {
-      Alert.alert('Brak danych', 'Wpisz cenę albo włącz „Wyceniane indywidualnie”.');
-      return;
-    }
     if (!businessSlug) {
       Alert.alert('Błąd', 'Nie masz przypisanego salonu do tego konta.');
       return;
     }
-    const formattedPricePln = individuallyPriced ? null : parseOptionalAmount(pricePln);
-    const formattedPriceEur = individuallyPriced ? null : parseOptionalAmount(priceEur);
-    const formattedPromoPln = individuallyPriced ? null : parseOptionalAmount(promoPricePln);
-    const formattedPromoEur = individuallyPriced ? null : parseOptionalAmount(promoPriceEur);
+
+    if (!withVariants) {
+      if (!individuallyPriced && !pricePln.trim() && !priceEur.trim()) {
+        Alert.alert('Brak danych', 'Wpisz cenę albo włącz „Wyceniane indywidualnie”.');
+        return;
+      }
+    }
+
+    const formattedPricePln = withVariants || individuallyPriced ? null : parseOptionalAmount(pricePln);
+    const formattedPriceEur = withVariants || individuallyPriced ? null : parseOptionalAmount(priceEur);
+    const formattedPromoPln = withVariants || individuallyPriced ? null : parseOptionalAmount(promoPricePln);
+    const formattedPromoEur = withVariants || individuallyPriced ? null : parseOptionalAmount(promoPriceEur);
 
     if (formattedPricePln !== null && Number.isNaN(formattedPricePln)) {
       Alert.alert('Błąd', 'Cena PLN musi być poprawną liczbą.');
@@ -230,45 +264,51 @@ export default function ServiceFormScreen() {
     }
 
     const preparedOptions = [];
-    for (const [index, option] of options.entries()) {
-      if (!option.name.trim() && !option.pricePln.trim() && !option.priceEur.trim() && !option.duration.trim()) {
-        continue;
+    if (withVariants) {
+      for (const [index, option] of options.entries()) {
+        if (!option.name.trim() && !option.pricePln.trim() && !option.priceEur.trim() && !option.duration.trim()) {
+          continue;
+        }
+        if (!option.name.trim()) {
+          Alert.alert('Wariant', 'Każdy wariant musi mieć nazwę (np. cała twarz).');
+          return;
+        }
+        const optPln = individuallyPriced ? null : parseOptionalAmount(option.pricePln);
+        const optEur = individuallyPriced ? null : parseOptionalAmount(option.priceEur);
+        if (
+          !individuallyPriced
+          && ((optPln == null && optEur == null) || Number.isNaN(optPln as number) || Number.isNaN(optEur as number))
+        ) {
+          Alert.alert('Wariant', `Podaj cenę dla wariantu „${option.name.trim()}”.`);
+          return;
+        }
+        const optDual = individuallyPriced
+          ? { pln: null, eur: null }
+          : resolveDualPrices(optPln, optEur);
+        const optDuration = option.duration.trim()
+          ? parseInt(option.duration, 10)
+          : null;
+        if (option.duration.trim() && (!optDuration || Number.isNaN(optDuration))) {
+          Alert.alert('Wariant', `Czas trwania wariantu „${option.name.trim()}” jest nieprawidłowy.`);
+          return;
+        }
+        preparedOptions.push({
+          id: option.id,
+          name: option.name.trim(),
+          price_amount: optDual.pln,
+          price_amount_eur: optDual.eur,
+          duration_minutes: optDuration,
+          sort_order: index,
+          is_active: true,
+        });
       }
-      if (!option.name.trim()) {
-        Alert.alert('Wariant', 'Każdy wariant musi mieć nazwę (np. cała twarz).');
+      if (preparedOptions.length < 2) {
+        Alert.alert('Warianty', 'Dodaj co najmniej 2 warianty albo wybierz „Jedna usługa”.');
         return;
       }
-      const optPln = individuallyPriced ? null : parseOptionalAmount(option.pricePln);
-      const optEur = individuallyPriced ? null : parseOptionalAmount(option.priceEur);
-      if (
-        !individuallyPriced
-        && ((optPln == null && optEur == null) || Number.isNaN(optPln as number) || Number.isNaN(optEur as number))
-      ) {
-        Alert.alert('Wariant', `Podaj cenę dla wariantu „${option.name.trim()}”.`);
-        return;
-      }
-      const optDual = individuallyPriced
-        ? { pln: null, eur: null }
-        : resolveDualPrices(optPln, optEur);
-      const optDuration = option.duration.trim()
-        ? parseInt(option.duration, 10)
-        : null;
-      if (option.duration.trim() && (!optDuration || Number.isNaN(optDuration))) {
-        Alert.alert('Wariant', `Czas trwania wariantu „${option.name.trim()}” jest nieprawidłowy.`);
-        return;
-      }
-      preparedOptions.push({
-        id: option.id,
-        name: option.name.trim(),
-        price_amount: optDual.pln,
-        price_amount_eur: optDual.eur,
-        duration_minutes: optDuration,
-        sort_order: index,
-        is_active: true,
-      });
     }
 
-    const dual = individuallyPriced
+    const dual = withVariants || individuallyPriced
       ? { pln: null, eur: null }
       : resolveDualPrices(formattedPricePln, formattedPriceEur);
     try {
@@ -282,7 +322,7 @@ export default function ServiceFormScreen() {
         category_id: selectedCategoryId || null,
         promotional_price_amount: formattedPromoPln,
         promotional_price_amount_eur: formattedPromoEur,
-        promotion_valid_until: individuallyPriced ? null : (promoUntil || null),
+        promotion_valid_until: withVariants || individuallyPriced ? null : (promoUntil || null),
         price_is_indicative: priceIsIndicative,
         options: preparedOptions,
       };
@@ -371,6 +411,31 @@ export default function ServiceFormScreen() {
               )}
             </TouchableOpacity>
 
+            <Text style={styles.inputLabel}>{t('service.form.pricingType')}</Text>
+            <View style={styles.modeRow}>
+              <TouchableOpacity
+                style={[styles.modeChip, !withVariants && styles.modeChipActive]}
+                onPress={() => setMode('simple')}
+              >
+                <Text style={[styles.modeChipText, !withVariants && styles.modeChipTextActive]}>
+                  {t('service.form.pricingSimple')}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modeChip, withVariants && styles.modeChipActive]}
+                onPress={() => setMode('variants')}
+              >
+                <Text style={[styles.modeChipText, withVariants && styles.modeChipTextActive]}>
+                  {t('service.form.pricingVariants')}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.hint}>
+              {withVariants
+                ? t('service.form.pricingVariantsHint')
+                : t('service.form.pricingSimpleHint')}
+            </Text>
+
             <View style={styles.switchRow}>
               <View style={{ flex: 1, paddingRight: 12 }}>
                 <Text style={styles.switchTitle}>
@@ -399,7 +464,15 @@ export default function ServiceFormScreen() {
               />
             </View>
 
-            {showPriceFields ? (
+            <View style={styles.inputWrapper}>
+              <Text style={styles.inputLabel}>{t('service.form.duration')}</Text>
+              <TextInput style={styles.input} placeholder="60" keyboardType="numeric" value={duration} onChangeText={setDuration} />
+              {withVariants ? (
+                <Text style={styles.hint}>{t('service.form.durationHintVariants')}</Text>
+              ) : null}
+            </View>
+
+            {!withVariants && showPriceFields ? (
               <>
                 <View style={styles.row}>
                   <View style={[styles.inputWrapper, { flex: 1 }]}>
@@ -425,95 +498,93 @@ export default function ServiceFormScreen() {
                     />
                   </View>
                 </View>
-                <Text style={styles.hint}>
-                  {options.length
-                    ? t('service.form.priceHintWithOptions')
-                    : t('service.form.priceHint')}
-                </Text>
+                <Text style={styles.hint}>{t('service.form.priceHint')}</Text>
               </>
             ) : null}
 
-            <View style={styles.inputWrapper}>
-              <Text style={styles.inputLabel}>{t('service.form.duration')}</Text>
-              <TextInput style={styles.input} placeholder="60" keyboardType="numeric" value={duration} onChangeText={setDuration} />
-            </View>
-
-            <View style={styles.optionsHeader}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.sectionTitle}>{t('service.form.options')}</Text>
-                <Text style={styles.hint}>{t('service.form.optionsHint')}</Text>
-              </View>
-              <TouchableOpacity style={styles.addOptionBtn} onPress={() => setOptions((current) => [...current, newOptionDraft()])}>
-                <Ionicons name="add" size={18} color="#fff" />
-                <Text style={styles.addOptionText}>{t('service.form.addOption')}</Text>
-              </TouchableOpacity>
-            </View>
-
-            {options.map((option, index) => (
-              <View key={option.key} style={styles.optionCard}>
-                <View style={styles.optionTop}>
-                  <Text style={styles.optionTitle}>{t('service.form.optionN', undefined, { n: index + 1 })}</Text>
+            {withVariants ? (
+              <>
+                <View style={styles.optionsHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.sectionTitle}>{t('service.form.options')}</Text>
+                    <Text style={styles.hint}>{t('service.form.optionsHint')}</Text>
+                  </View>
                   <TouchableOpacity
-                    onPress={() => setOptions((current) => current.filter((item) => item.key !== option.key))}
-                    hitSlop={8}
+                    style={styles.addOptionBtn}
+                    onPress={() => setOptions((current) => [...current, newOptionDraft()])}
                   >
-                    <Ionicons name="trash-outline" size={18} color="#DC2626" />
+                    <Ionicons name="add" size={18} color="#fff" />
+                    <Text style={styles.addOptionText}>{t('service.form.addOption')}</Text>
                   </TouchableOpacity>
                 </View>
-                <TextInput
-                  style={styles.input}
-                  placeholder={t('service.form.optionNamePlaceholder')}
-                  value={option.name}
-                  onChangeText={(value) => updateOption(option.key, { name: value })}
-                />
-                {showPriceFields ? (
-                  <View style={[styles.row, { marginTop: 10 }]}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.inputLabel}>{t('service.form.pricePln')}</Text>
-                      <TextInput
-                        style={styles.input}
-                        placeholder="0"
-                        keyboardType="numeric"
-                        value={option.pricePln}
-                        onChangeText={(value) => updateOption(option.key, { pricePln: value })}
-                        onBlur={() => {
-                          const pln = parseOptionalAmount(option.pricePln);
-                          if (pln == null || Number.isNaN(pln) || option.priceEur.trim()) return;
-                          updateOption(option.key, { priceEur: String(convertCurrency(pln, 'PLN', 'EUR')) });
-                        }}
-                      />
+
+                {options.map((option, index) => (
+                  <View key={option.key} style={styles.optionCard}>
+                    <View style={styles.optionTop}>
+                      <Text style={styles.optionTitle}>{t('service.form.optionN', undefined, { n: index + 1 })}</Text>
+                      <TouchableOpacity
+                        onPress={() => setOptions((current) => current.filter((item) => item.key !== option.key))}
+                        hitSlop={8}
+                      >
+                        <Ionicons name="trash-outline" size={18} color="#DC2626" />
+                      </TouchableOpacity>
                     </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.inputLabel}>{t('service.form.priceEur')}</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder={t('service.form.optionNamePlaceholder')}
+                      value={option.name}
+                      onChangeText={(value) => updateOption(option.key, { name: value })}
+                    />
+                    {showPriceFields ? (
+                      <View style={[styles.row, { marginTop: 10 }]}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.inputLabel}>{t('service.form.pricePln')}</Text>
+                          <TextInput
+                            style={styles.input}
+                            placeholder="0"
+                            keyboardType="numeric"
+                            value={option.pricePln}
+                            onChangeText={(value) => updateOption(option.key, { pricePln: value })}
+                            onBlur={() => {
+                              const pln = parseOptionalAmount(option.pricePln);
+                              if (pln == null || Number.isNaN(pln) || option.priceEur.trim()) return;
+                              updateOption(option.key, { priceEur: String(convertCurrency(pln, 'PLN', 'EUR')) });
+                            }}
+                          />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.inputLabel}>{t('service.form.priceEur')}</Text>
+                          <TextInput
+                            style={styles.input}
+                            placeholder="0"
+                            keyboardType="numeric"
+                            value={option.priceEur}
+                            onChangeText={(value) => updateOption(option.key, { priceEur: value })}
+                            onBlur={() => {
+                              const eur = parseOptionalAmount(option.priceEur);
+                              if (eur == null || Number.isNaN(eur) || option.pricePln.trim()) return;
+                              updateOption(option.key, { pricePln: String(convertCurrency(eur, 'EUR', 'PLN')) });
+                            }}
+                          />
+                        </View>
+                      </View>
+                    ) : null}
+                    <View style={[styles.inputWrapper, { marginTop: 10, marginBottom: 0 }]}>
+                      <Text style={styles.inputLabel}>{t('service.form.optionDuration')}</Text>
                       <TextInput
                         style={styles.input}
-                        placeholder="0"
+                        placeholder={t('service.form.optionDurationPlaceholder')}
                         keyboardType="numeric"
-                        value={option.priceEur}
-                        onChangeText={(value) => updateOption(option.key, { priceEur: value })}
-                        onBlur={() => {
-                          const eur = parseOptionalAmount(option.priceEur);
-                          if (eur == null || Number.isNaN(eur) || option.pricePln.trim()) return;
-                          updateOption(option.key, { pricePln: String(convertCurrency(eur, 'EUR', 'PLN')) });
-                        }}
+                        value={option.duration}
+                        onChangeText={(value) => updateOption(option.key, { duration: value })}
                       />
                     </View>
                   </View>
-                ) : null}
-                <View style={[styles.inputWrapper, { marginTop: 10, marginBottom: 0 }]}>
-                  <Text style={styles.inputLabel}>{t('service.form.optionDuration')}</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder={t('service.form.optionDurationPlaceholder')}
-                    keyboardType="numeric"
-                    value={option.duration}
-                    onChangeText={(value) => updateOption(option.key, { duration: value })}
-                  />
-                </View>
-              </View>
-            ))}
+                ))}
+              </>
+            ) : null}
 
-            {showPriceFields ? (
+            {!withVariants && showPriceFields ? (
               <>
                 <View style={styles.row}>
                   <View style={[styles.inputWrapper, { flex: 1 }]}>
@@ -688,6 +759,25 @@ const styles = StyleSheet.create({
   dateValue: { color: Colors.light.text, fontSize: 15 },
   datePlaceholder: { color: '#94A3B8', fontSize: 15 },
   row: { flexDirection: 'row', gap: 12 },
+  modeRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+  modeChip: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  modeChipActive: {
+    backgroundColor: '#EDE9FE',
+    borderColor: Colors.light.accent,
+  },
+  modeChipText: { color: '#64748B', fontWeight: '700', fontSize: 13, textAlign: 'center' },
+  modeChipTextActive: { color: Colors.light.accent },
   switchRow: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC',
     borderRadius: 14, padding: 14, marginBottom: 14, borderWidth: 1, borderColor: '#E2E8F0',

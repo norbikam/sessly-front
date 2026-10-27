@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { goBackToApp } from '../../utils/navigation';
 import apiClient from '../../api/client';
 import Colors from '../../constants/Colors';
 import { useLocation } from '../../contexts/LocationContext';
@@ -92,7 +93,7 @@ export default function OpeningHoursScreen() {
       setSaving(true);
       await apiClient.post(`/businesses/${businessSlug}/opening-hours/bulk_update/`, hours);
       Alert.alert('Sukces', 'Twój harmonogram pracy został zaktualizowany!');
-      router.back();
+      goBackToApp(router, '/(tabs)');
     } catch (e: any) {
       Alert.alert('Błąd', e?.response?.data ? JSON.stringify(e.response.data) : 'Nie udało się zapisać.');
     } finally {
@@ -111,7 +112,7 @@ export default function OpeningHoursScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => goBackToApp(router, '/(tabs)')} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color={Colors.light.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Godziny Pracy</Text>

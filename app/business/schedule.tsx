@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { goBackToApp } from '../../utils/navigation';
 import {
   getBusinessAppointments,
   confirmAppointment,
@@ -398,7 +399,7 @@ export default function ScheduleScreen() {
               <View style={styles.desktopHeaderLeft}>
                 <TouchableOpacity
                   onPress={() => {
-                    if (router.canGoBack()) router.back();
+                    if (router.canGoBack()) goBackToApp(router, '/(tabs)');
                     else router.replace('/(tabs)' as any);
                   }}
                   style={styles.desktopBackButton}
@@ -505,7 +506,7 @@ export default function ScheduleScreen() {
         <>
           <View style={[styles.header, { backgroundColor: cardColor, paddingTop: insets.top + Spacing.sm }]}>
             <TouchableOpacity
-              onPress={() => router.back()}
+              onPress={() => goBackToApp(router, '/(tabs)')}
               style={styles.backButton}
               accessibilityLabel="Go back"
             >

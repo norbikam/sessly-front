@@ -3,6 +3,7 @@ import { ActivityIndicator, FlatList, StyleSheet, Text, TextInput, TouchableOpac
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { goBackToApp } from '../../utils/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { getBusinessCategories, searchBusinesses } from '../../api/business';
@@ -50,7 +51,7 @@ export default function CategoryScreen() {
   return (
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backButton} onPress={() => goBackToApp(router, '/(tabs)')}>
           <Ionicons name="arrow-back" size={23} color="#fff" />
         </TouchableOpacity>
         <View style={styles.headerText}>

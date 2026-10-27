@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { goBackToApp } from '../../utils/navigation';
 import Colors from '../../constants/Colors';
 import { api } from '../../api/client';
 
@@ -74,12 +75,12 @@ export default function ChangePasswordScreen() {
       const successMsg = 'Hasło zostało zmienione';
       if (Platform.OS === 'web') {
         window.alert(successMsg);
-        router.back();
+        goBackToApp(router, '/(tabs)/account');
       } else {
         Alert.alert('Sukces', successMsg, [
           {
             text: 'OK',
-            onPress: () => router.back(),
+            onPress: () => goBackToApp(router, '/(tabs)/account'),
           },
         ]);
       }
@@ -106,7 +107,7 @@ export default function ChangePasswordScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => goBackToApp(router, '/(tabs)/account')} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Zmień hasło</Text>
@@ -254,7 +255,7 @@ export default function ChangePasswordScreen() {
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.cancelButton} onPress={() => router.back()}>
+          <TouchableOpacity style={styles.cancelButton} onPress={() => goBackToApp(router, '/(tabs)/account')}>
             <Text style={styles.cancelButtonText}>Anuluj</Text>
           </TouchableOpacity>
         </View>

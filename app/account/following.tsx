@@ -3,6 +3,7 @@ import { ActivityIndicator, FlatList, Platform, StyleSheet, Text, TouchableOpaci
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { goBackToApp } from '../../utils/navigation';
 
 import { getFollowing, toggleFollowing } from '../../api/following';
 import Colors from '../../constants/Colors';
@@ -35,7 +36,7 @@ export default function FollowingScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => goBackToApp(router, '/(tabs)/account')}>
           <Ionicons name="arrow-back" size={24} color={Colors.light.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Obserwowane lokale</Text>

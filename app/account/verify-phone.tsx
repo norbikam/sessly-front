@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { goBackToApp } from '../../utils/navigation';
 
 import { requestPhoneCode, verifyPhoneCode } from '../../api/phone';
 import Colors from '../../constants/Colors';
@@ -55,7 +56,7 @@ export default function VerifyPhoneScreen() {
         await refreshUser?.();
       }
       notify('Gotowe', 'Numer telefonu został potwierdzony.');
-      router.back();
+      goBackToApp(router, '/(tabs)/account');
     } catch (error: any) {
       notify('Błąd', error?.message || 'Nie udało się potwierdzić numeru.');
     } finally {
@@ -68,7 +69,7 @@ export default function VerifyPhoneScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.back}>
+        <TouchableOpacity onPress={() => goBackToApp(router, '/(tabs)/account')} style={styles.back}>
           <Ionicons name="arrow-back" size={24} color={Colors.light.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Numer telefonu</Text>

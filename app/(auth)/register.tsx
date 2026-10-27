@@ -4,6 +4,7 @@ import {
   KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, TextInputProps
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { goBackToApp } from '../../utils/navigation';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { lookupBusinessRegistry } from '../../api/business';
@@ -199,7 +200,7 @@ export default function RegisterScreen() {
       >
         
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <TouchableOpacity onPress={() => goBackToApp(router, '/(auth)/login')} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={24} color={Colors.light.text} />
           </TouchableOpacity>
           <Text style={styles.title}>Dołącz do Sessly</Text>

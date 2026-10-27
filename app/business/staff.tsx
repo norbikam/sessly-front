@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { goBackToApp } from '../../utils/navigation';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -106,7 +107,7 @@ export default function StaffScreen() {
   return (
     <View style={[styles.container, { backgroundColor: palette.background }]}>
       <View style={[styles.header, { paddingTop: insets.top + 10, backgroundColor: palette.card, borderBottomColor: palette.border }]}>
-        <TouchableOpacity style={styles.back} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.back} onPress={() => goBackToApp(router, '/(tabs)')}>
           <Ionicons name="arrow-back" size={23} color={palette.text} />
         </TouchableOpacity>
         <View>

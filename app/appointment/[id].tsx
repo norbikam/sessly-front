@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { goBackToApp } from '../../utils/navigation';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Colors from '../../constants/Colors';
@@ -224,7 +225,7 @@ export default function AppointmentDetailScreen() {
         <View style={styles.errorContainer}>
           <Ionicons name="alert-circle-outline" size={64} color="#b00020" />
           <Text style={styles.errorText}>{error || 'Nie znaleziono wizyty'}</Text>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <TouchableOpacity onPress={() => goBackToApp(router, '/(tabs)/appointments')} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={20} color="#333" />
             <Text style={styles.backText}>Powrót</Text>
           </TouchableOpacity>
@@ -301,7 +302,7 @@ export default function AppointmentDetailScreen() {
       <ScrollView style={styles.container}>
         {/* Header */}
         <LinearGradient colors={[Colors.gradientStart, Colors.gradientEnd]} style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <TouchableOpacity onPress={() => goBackToApp(router, '/(tabs)/appointments')} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color="#fff" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Szczegóły wizyty</Text>

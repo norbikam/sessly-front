@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { goBackToApp } from '../../utils/navigation';
 
 import { resendVerificationCode, verifyEmail } from '../../api/verification';
 import { useAuth } from '../../contexts/AuthContext';
@@ -102,7 +103,7 @@ export default function VerifyEmailScreen() {
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity style={styles.back} onPress={() => router.back()}>
+      <TouchableOpacity style={styles.back} onPress={() => goBackToApp(router, '/(auth)/login')}>
         <Ionicons name="arrow-back" size={24} color={Colors.light.text} />
       </TouchableOpacity>
       <View style={styles.card}>

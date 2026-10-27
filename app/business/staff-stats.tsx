@@ -2,6 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { goBackToApp } from '../../utils/navigation';
 import { BusinessStats, getStaffStats } from '../../api/business';
 import Colors from '../../constants/Colors';
 import { useLocation } from '../../contexts/LocationContext';
@@ -32,7 +33,7 @@ export default function StaffStatsScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.back}>
+        <TouchableOpacity onPress={() => goBackToApp(router, '/business/staff')} style={styles.back}>
           <Ionicons name="arrow-back" size={24} color={Colors.light.text} />
         </TouchableOpacity>
         <View>

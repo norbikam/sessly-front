@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { goBackToApp } from '../../utils/navigation';
 import { useAuth } from '../../contexts/AuthContext';
 import Colors from '../../constants/Colors';
 
@@ -54,7 +55,7 @@ export default function EditProfileScreen() {
         Alert.alert('Sukces', successMsg);
       }
 
-      router.back();
+      goBackToApp(router, '/(tabs)/account');
     } catch (error: any) {
       console.error('❌ [EditProfile] Update error:', error);
 
@@ -73,7 +74,7 @@ export default function EditProfileScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => goBackToApp(router, '/(tabs)/account')} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Edytuj profil</Text>
@@ -190,7 +191,7 @@ export default function EditProfileScreen() {
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.cancelButton} onPress={() => router.back()}>
+          <TouchableOpacity style={styles.cancelButton} onPress={() => goBackToApp(router, '/(tabs)/account')}>
             <Text style={styles.cancelButtonText}>Anuluj</Text>
           </TouchableOpacity>
         </View>

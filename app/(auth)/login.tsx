@@ -5,6 +5,7 @@ import {
   TextInput, Keyboard,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { goBackToApp } from '../../utils/navigation';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -100,7 +101,7 @@ export default function LoginScreen() {
       >
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))}
+          onPress={() => goBackToApp(router, '/(tabs)')}
         >
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>

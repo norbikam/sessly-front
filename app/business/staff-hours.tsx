@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
+import { goBackToApp } from '../../utils/navigation';
 import apiClient from '../../api/client';
 import Colors from '../../constants/Colors';
 import { useLocation } from '../../contexts/LocationContext';
@@ -94,7 +95,7 @@ export default function StaffHoursScreen() {
       }));
       await apiClient.post(`/businesses/${activeLocation.slug}/staff/${id}/working-hours/`, payload);
       notify('Zapisano', 'Godziny pracy pracownika zostały zaktualizowane.');
-      router.back();
+      goBackToApp(router, '/business/staff');
     } catch (error: any) {
       Alert.alert('Błąd', error?.response?.data ? JSON.stringify(error.response.data) : 'Nie udało się zapisać.');
     } finally {
@@ -113,7 +114,7 @@ export default function StaffHoursScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => goBackToApp(router, '/business/staff')} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color={Colors.light.text} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>

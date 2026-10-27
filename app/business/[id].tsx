@@ -5,6 +5,7 @@ import {
   Animated, Pressable, TextInput, Modal,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { goBackToApp } from '../../utils/navigation';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
@@ -278,7 +279,7 @@ export default function BusinessDetailScreen() {
       <View style={styles.center}>
         <Ionicons name="storefront-outline" size={64} color="#CBD5E1" />
         <Text style={styles.errorText}>Nie znaleziono biznesu.</Text>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => goBackToApp(router, '/(tabs)')}>
           <Text style={styles.backBtnText}>Powrót do strony głównej</Text>
         </TouchableOpacity>
       </View>
@@ -295,7 +296,7 @@ export default function BusinessDetailScreen() {
     <View style={styles.container}>
       {/* Nawigacja Górna */}
       <View style={styles.topNav}>
-        <TouchableOpacity style={styles.navBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.navBtn} onPress={() => goBackToApp(router, '/(tabs)')}>
           <Ionicons name="arrow-back" size={24} color={Colors.light.text} />
         </TouchableOpacity>
         <View style={styles.topNavRight}>
