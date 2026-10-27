@@ -138,6 +138,22 @@ export interface BusinessCategory {
   label: string;
 }
 
+export interface ServiceOption {
+  id: string;
+  name: string;
+  name_i18n?: Record<string, string>;
+  localized_name?: string;
+  duration_minutes?: number | null;
+  effective_duration_minutes?: number;
+  price_amount?: number;
+  price_currency?: string;
+  price_amount_eur?: number;
+  promotional_price_amount?: number | null;
+  promotional_price_amount_eur?: number | null;
+  sort_order?: number;
+  is_active?: boolean;
+}
+
 export interface BusinessService {
   id: string;
   category?: ServiceCategory;
@@ -156,9 +172,11 @@ export interface BusinessService {
   promotional_price_amount?: number;
   promotional_price_amount_eur?: number;
   promotion_valid_until?: string;
+  price_is_indicative?: boolean;
   is_active: boolean;
   color?: string;
   image_url?: string;
+  options?: ServiceOption[];
 }
 
 export interface ServiceCategory {

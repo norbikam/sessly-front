@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, ActivityIndicator, 
   TouchableOpacity, Platform, Dimensions, Linking, Alert, Share,
-  Animated, Pressable, TextInput
+  Animated, Pressable, TextInput, Modal,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,11 +17,19 @@ import { useFavorites } from '../../contexts/FavoritesContext';
 import { useLocale } from '../../contexts/LocaleContext';
 import BookingModal from '../../components/booking/BookingModal';
 import OpeningHoursCard from '../../components/business/OpeningHoursCard';
-import { Business, Review, Service } from '../../types/api';
+import { Business, Review, Service, ServiceOption } from '../../types/api';
 import { formatMoney, formatServicePrice, getServicePrice } from '../../utils/currency';
 import { localizedDescription, localizedName } from '../../utils/localized';
 import { notify } from '../../utils/notify';
 import { getFollowing, toggleFollowing } from '../../api/following';
+
+type CartItem = { service: Service; option?: ServiceOption };
+
+const cartItemKey = (item: CartItem) =>
+  `${item.service.id}:${item.option?.id || ''}`;
+
+const activeServiceOptions = (service: Service) =>
+  (service.options || []).filter((item) => item.is_active !== false);
 
 const { width } = Dimensions.get('window');
 const isWeb = Platform.OS === 'web' && width > 768;
@@ -64,9 +72,14 @@ export default function BusinessDetailScreen() {
   
   // Booking State
   const [selectedService, setSelectedService] = useState<Service | null>(null);
-  const [cart, setCart] = useState<Service[]>([]);
-  const cartServiceIds = useMemo(() => cart.map((item) => String(item.id)), [cart]);
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const cartServiceIds = useMemo(() => cart.map((item) => String(item.service.id)), [cart]);
+  const cartOptionIds = useMemo(
+    () => cart.map((item) => item.option?.id || null),
+    [cart],
+  );
   const [showBookingModal, setShowBookingModal] = useState(false);
+  const [optionPickerService, setOptionPickerService] = useState<Service | null>(null);
   const canBook = user?.role === 'customer';
 
   useEffect(() => {
@@ -141,6 +154,17 @@ export default function BusinessDetailScreen() {
     }
   };
 
+  const toggleCartItem = (service: Service, option?: ServiceOption) => {
+    const next: CartItem = { service, option };
+    const key = cartItemKey(next);
+    setCart((prev) => {
+      if (prev.some((item) => cartItemKey(item) === key)) {
+        return prev.filter((item) => cartItemKey(item) !== key);
+      }
+      return [...prev, next];
+    });
+  };
+
   const handleBook = (service: Service) => {
     if (!canBook) {
       notify('Konto firmowe', 'Właściciel i pracownik nie mogą rezerwować wizyt.');
@@ -153,17 +177,22 @@ export default function BusinessDetailScreen() {
       ]);
       return;
     }
-    setCart((prev) => {
-      if (prev.some((item) => String(item.id) === String(service.id))) {
-        return prev.filter((item) => String(item.id) !== String(service.id));
+    const options = activeServiceOptions(service);
+    if (options.length) {
+      const already = cart.filter((item) => String(item.service.id) === String(service.id));
+      if (already.length === options.length) {
+        setCart((prev) => prev.filter((item) => String(item.service.id) !== String(service.id)));
+        return;
       }
-      return [...prev, service];
-    });
+      setOptionPickerService(service);
+      return;
+    }
+    toggleCartItem(service);
   };
 
   const openCartBooking = () => {
     if (!cart.length) return;
-    setSelectedService(cart[0]);
+    setSelectedService(cart[0].service);
     setShowBookingModal(true);
   };
 
@@ -176,7 +205,8 @@ export default function BusinessDetailScreen() {
       
       // Wysyłamy prośbę o rezerwację do Django
       await createAppointment(businessSlug, {
-        service_ids: cart.map((item) => String(item.id)),
+        service_ids: cart.map((item) => String(item.service.id)),
+        service_option_ids: cartOptionIds,
         date: date,
         start_time: time,
         staff_id: staffId,
@@ -387,7 +417,8 @@ export default function BusinessDetailScreen() {
             </View>
           ) : (
             services.map((service: Service) => {
-              const inCart = cart.some((item) => String(item.id) === String(service.id));
+              const options = activeServiceOptions(service);
+              const inCart = cart.some((item) => String(item.service.id) === String(service.id));
               const promotionActive = Boolean(
                 service.promotional_price_amount
                 && (!service.promotion_valid_until || new Date(service.promotion_valid_until) >= new Date())
@@ -405,11 +436,17 @@ export default function BusinessDetailScreen() {
                   {localizedDescription(service, language) ? (
                     <Text style={styles.serviceDesc} numberOfLines={2}>{localizedDescription(service, language)}</Text>
                   ) : null}
+                  {options.length ? (
+                    <Text style={styles.serviceDesc} numberOfLines={1}>
+                      {options.map((item) => item.localized_name || item.name).join(' · ')}
+                    </Text>
+                  ) : null}
                   <View style={styles.serviceMeta}>
                     <Text style={styles.servicePrice}>
                       {formatServicePrice(service, currency)}
+                      {service.price_is_indicative ? '*' : ''}
                     </Text>
-                    {promotionActive ? (
+                    {promotionActive && !options.length ? (
                       <Text style={styles.regularPrice}>
                         {formatMoney(getServicePrice(service, currency, { preferPromo: false }), currency)}
                       </Text>
@@ -417,11 +454,16 @@ export default function BusinessDetailScreen() {
                     <View style={styles.dot} />
                     <Text style={styles.serviceDuration}>{(service as any).duration_minutes || 60} min</Text>
                   </View>
+                  {service.price_is_indicative ? (
+                    <Text style={styles.indicativeNote}>{t('booking.indicativePriceNote')}</Text>
+                  ) : null}
                 </View>
                 
                 {canBook ? (
                   <View style={[styles.bookBtn, inCart && styles.bookBtnActive]}>
-                    <Text style={[styles.bookBtnText, inCart && { color: '#fff' }]}>{inCart ? t('booking.inCart') : t('booking.add')}</Text>
+                    <Text style={[styles.bookBtnText, inCart && { color: '#fff' }]}>
+                      {inCart ? t('booking.inCart') : options.length ? t('booking.chooseOption') : t('booking.add')}
+                    </Text>
                   </View>
                 ) : null}
               </TouchableOpacity>
@@ -491,7 +533,15 @@ export default function BusinessDetailScreen() {
             {t('business.bookServices', undefined, {
               count: cart.length,
               label: cart.length === 1 ? t('business.serviceSingular') : t('business.servicePlural'),
-              minutes: cart.reduce((sum, item) => sum + (item.duration_minutes || 0), 0),
+              minutes: cart.reduce(
+                (sum, item) =>
+                  sum
+                  + (item.option?.effective_duration_minutes
+                    || item.option?.duration_minutes
+                    || item.service.duration_minutes
+                    || 0),
+                0,
+              ),
             })}
           </Text>
         </TouchableOpacity>
@@ -503,10 +553,64 @@ export default function BusinessDetailScreen() {
           onClose={() => setShowBookingModal(false)}
           service={selectedService as any}
           serviceIds={cartServiceIds}
+          serviceOptionIds={cartOptionIds}
           business={business as any}
           onConfirm={handleBookingConfirm}
         />
       )}
+
+      {optionPickerService ? (
+        <Modal
+          visible
+          transparent
+          animationType="fade"
+          onRequestClose={() => setOptionPickerService(null)}
+        >
+          <View style={styles.optionOverlay}>
+            <View style={styles.optionCard}>
+              <Text style={styles.optionTitle}>{t('booking.chooseOption')}</Text>
+              <Text style={styles.optionSubtitle}>{localizedName(optionPickerService, language)}</Text>
+              {activeServiceOptions(optionPickerService).map((option) => {
+                const selected = cart.some(
+                  (item) =>
+                    String(item.service.id) === String(optionPickerService.id)
+                    && String(item.option?.id) === String(option.id),
+                );
+                return (
+                  <TouchableOpacity
+                    key={option.id}
+                    style={[styles.optionRow, selected && styles.optionRowActive]}
+                    onPress={() => {
+                      toggleCartItem(optionPickerService, option);
+                      setOptionPickerService(null);
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.optionName}>{option.localized_name || option.name}</Text>
+                      <Text style={styles.optionMeta}>
+                        {formatMoney(getServicePrice(option, currency), currency)}
+                        {' · '}
+                        {option.effective_duration_minutes
+                          || option.duration_minutes
+                          || optionPickerService.duration_minutes}
+                        {' min'}
+                      </Text>
+                    </View>
+                    <Ionicons
+                      name={selected ? 'checkmark-circle' : 'add-circle-outline'}
+                      size={22}
+                      color={Colors.light.accent}
+                    />
+                  </TouchableOpacity>
+                );
+              })}
+              <TouchableOpacity style={styles.optionCancel} onPress={() => setOptionPickerService(null)}>
+                <Text style={styles.optionCancelText}>{t('common.back')}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      ) : null}
     </View>
   );
 }
@@ -575,6 +679,24 @@ const styles = StyleSheet.create({
   regularPrice: { marginLeft: 7, fontSize: 12, color: '#94A3B8', textDecorationLine: 'line-through' },
   dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#D1D5DB', marginHorizontal: 8 },
   serviceDuration: { fontSize: 14, color: Colors.light.textSecondary, fontWeight: '500' },
+  indicativeNote: {
+    marginTop: 6, fontSize: 12, lineHeight: 16, color: '#64748B', fontWeight: '600', fontStyle: 'italic',
+  },
+  optionOverlay: {
+    flex: 1, backgroundColor: 'rgba(15,23,42,0.55)', justifyContent: 'center', padding: 20,
+  },
+  optionCard: { backgroundColor: '#fff', borderRadius: 20, padding: 18 },
+  optionTitle: { fontSize: 18, fontWeight: '800', color: Colors.light.text },
+  optionSubtitle: { marginTop: 4, marginBottom: 14, color: '#64748B', fontWeight: '600' },
+  optionRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 12,
+    borderRadius: 14, backgroundColor: '#F8FAFC', marginBottom: 8, borderWidth: 1, borderColor: '#E2E8F0',
+  },
+  optionRowActive: { backgroundColor: '#F5F3FF', borderColor: Colors.light.accent },
+  optionName: { fontSize: 15, fontWeight: '800', color: Colors.light.text },
+  optionMeta: { marginTop: 3, fontSize: 13, color: '#64748B', fontWeight: '600' },
+  optionCancel: { alignItems: 'center', paddingTop: 8 },
+  optionCancelText: { color: '#64748B', fontWeight: '800' },
   bookBtn: {
     backgroundColor: '#F5F3FF', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 20,
     borderWidth: 1, borderColor: '#EDE9FE'

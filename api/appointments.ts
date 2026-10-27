@@ -23,6 +23,8 @@ export interface AppointmentFilters {
 export interface CreateAppointmentData {
   service_id?: string;
   service_ids?: string[];
+  service_option_id?: string | null;
+  service_option_ids?: Array<string | null>;
   date: string; // YYYY-MM-DD
   start_time: string; // HH:MM
   notes?: string;
@@ -215,6 +217,7 @@ export const getAvailability = async (
   serviceId: string | string[],
   date: string,
   staffId?: string,
+  serviceOptionIds?: Array<string | null | undefined>,
 ): Promise<AvailabilityResponse> => {
   try {
     const params = new URLSearchParams({ date });
@@ -224,6 +227,12 @@ export const getAvailability = async (
       params.set('service_id', serviceId);
     }
     if (staffId) params.set('staff_id', staffId);
+    if (serviceOptionIds?.length) {
+      params.set(
+        'service_option_ids',
+        serviceOptionIds.map((id) => id || '').join(','),
+      );
+    }
     const url = `/businesses/${businessSlug}/availability/?${params.toString()}`;
     console.log('📤 [getAvailability] URL:', url);
 

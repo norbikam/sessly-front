@@ -79,10 +79,24 @@ export function formatMoney(
   return currency === 'EUR' ? `${rounded} €` : `${rounded} zł`;
 }
 
+type PricedWithOptions = Priced & {
+  options?: Array<Priced & { is_active?: boolean }> | null;
+};
+
 export function formatServicePrice(
-  service: Priced | null | undefined,
+  service: PricedWithOptions | null | undefined,
   currency: AppCurrency,
   options?: { preferPromo?: boolean },
 ): string {
+  const activeOptions = (service?.options || []).filter((item) => item.is_active !== false);
+  if (activeOptions.length > 0) {
+    const amounts = activeOptions
+      .map((item) => getServicePrice(item, currency, options))
+      .filter((amount): amount is number => amount != null);
+    if (amounts.length) {
+      const lowest = Math.min(...amounts);
+      return `od ${formatMoney(lowest, currency)}`;
+    }
+  }
   return formatMoney(getServicePrice(service, currency, options), currency);
 }

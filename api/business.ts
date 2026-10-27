@@ -155,25 +155,47 @@ export const addService = async (
   return response.data;
 };
 
+export type ServiceWritePayload = {
+  name: string;
+  price_amount: number;
+  price_amount_eur?: number | null;
+  duration_minutes: number;
+  description?: string | null;
+  category_id?: string | null;
+  promotional_price_amount?: number | null;
+  promotional_price_amount_eur?: number | null;
+  promotion_valid_until?: string | null;
+  price_is_indicative?: boolean;
+  options?: Array<{
+    id?: string;
+    name: string;
+    price_amount?: number | null;
+    price_amount_eur?: number | null;
+    duration_minutes?: number | null;
+    sort_order?: number;
+    is_active?: boolean;
+  }>;
+};
+
+const appendServiceFields = (form: FormData, data: ServiceWritePayload) => {
+  Object.entries(data).forEach(([key, value]) => {
+    if (value === undefined || value === null) return;
+    if (key === 'options') {
+      form.append('options', JSON.stringify(value));
+      return;
+    }
+    if (value === '') return;
+    form.append(key, String(value));
+  });
+};
+
 export const uploadService = async (
   businessSlug: string,
-  data: {
-    name: string;
-    price_amount: number;
-    price_amount_eur?: number;
-    duration_minutes: number;
-    description?: string;
-    category_id?: string;
-    promotional_price_amount?: number;
-    promotional_price_amount_eur?: number;
-    promotion_valid_until?: string;
-  },
+  data: ServiceWritePayload,
   asset?: UploadAsset,
 ): Promise<Service> => {
   const form = new FormData();
-  Object.entries(data).forEach(([key, value]) => {
-    if (value !== undefined) form.append(key, String(value));
-  });
+  appendServiceFields(form, data);
   if (asset) await appendUpload(form, 'image', asset);
   const response = await apiClient.post<Service>(`/businesses/${businessSlug}/services/`, form);
   return response.data;
@@ -182,16 +204,7 @@ export const uploadService = async (
 export const updateService = async (
   businessSlug: string,
   serviceId: string,
-  data: {
-    name: string;
-    price_amount: number;
-    price_amount_eur?: number | null;
-    duration_minutes: number;
-    category_id?: string | null;
-    promotional_price_amount?: number | null;
-    promotional_price_amount_eur?: number | null;
-    promotion_valid_until?: string | null;
-  },
+  data: ServiceWritePayload,
   asset?: UploadAsset,
 ): Promise<Service> => {
   if (!asset) {
@@ -203,10 +216,7 @@ export const updateService = async (
   }
 
   const form = new FormData();
-  Object.entries(data).forEach(([key, value]) => {
-    if (value === undefined || value === null || value === '') return;
-    form.append(key, String(value));
-  });
+  appendServiceFields(form, data);
   await appendUpload(form, 'image', asset);
   const response = await apiClient.patch<Service>(
     `/businesses/${businessSlug}/services/${serviceId}/`,

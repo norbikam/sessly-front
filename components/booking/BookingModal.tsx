@@ -33,6 +33,7 @@ interface BookingModalProps {
   onClose: () => void;
   service: Service;
   serviceIds?: string[];
+  serviceOptionIds?: Array<string | null>;
   business: Business;
   onConfirm: (date: string, time: string, staffId?: string) => void;
 }
@@ -42,6 +43,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
   onClose,
   service,
   serviceIds,
+  serviceOptionIds,
   business,
   onConfirm,
 }) => {
@@ -71,6 +73,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
         serviceIds?.length ? serviceIds : String(service.id),
         date,
         selectedStaffId,
+        serviceOptionIds,
       );
 
       let slots: string[] = [];
@@ -92,7 +95,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [business.slug, selectedStaffId, service.id, serviceIds]);
+  }, [business.slug, selectedStaffId, service.id, serviceIds, serviceOptionIds]);
 
   // Pobieranie dostępności gdy wybierzemy datę
   useEffect(() => {
@@ -152,9 +155,13 @@ const BookingModal: React.FC<BookingModalProps> = ({
                 <Ionicons name="cash-outline" size={16} color="#666" />
                 <Text style={styles.metaText}>
                   {formatServicePrice(service, currency)}
+                  {service.price_is_indicative ? '*' : ''}
                 </Text>
               </View>
             </View>
+            {service.price_is_indicative ? (
+              <Text style={styles.indicativeNote}>{t('booking.indicativePriceNote')}</Text>
+            ) : null}
           </View>
 
           <ScrollView style={styles.content} showsVerticalScrollIndicator={true}>
@@ -358,6 +365,14 @@ const styles = StyleSheet.create({
   serviceMeta: {
     flexDirection: 'row',
     gap: 16,
+  },
+  indicativeNote: {
+    marginTop: 8,
+    fontSize: 12,
+    lineHeight: 16,
+    color: '#64748B',
+    fontWeight: '600',
+    fontStyle: 'italic',
   },
   staffList: { gap: 10, paddingVertical: 4 },
   staffChip: { minWidth: 112, minHeight: 64, paddingHorizontal: 13, borderRadius: 14, borderWidth: 1, borderColor: '#DDD6FE', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FAF5FF' },
