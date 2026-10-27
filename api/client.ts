@@ -105,6 +105,7 @@ apiClient.interceptors.request.use(
       config.headers['Accept-Language'] = getApiLanguage();
 
       // FormData must keep the browser/RN multipart boundary — never force JSON.
+      // Uploads (logo/banner/avatar + WebP/S3) need more than the default 15s.
       if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
         const headers = config.headers as { delete?: (name: string) => void } & Record<string, unknown>;
         if (typeof headers.delete === 'function') {
@@ -112,6 +113,9 @@ apiClient.interceptors.request.use(
         } else {
           delete headers['Content-Type'];
           delete headers['content-type'];
+        }
+        if (config.timeout == null || config.timeout <= 15000) {
+          config.timeout = 120000;
         }
       }
 

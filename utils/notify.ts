@@ -12,8 +12,16 @@ export function notify(title: string, message?: string, onDismiss?: () => void) 
 
 /** Human message from axios/DRF errors — never dump raw HTML 500 pages. */
 export function formatApiError(error: any, fallback = "Sprawdź połączenie z serwerem."): string {
+  const code = error?.code || error?.response?.status;
+  const rawMessage = String(error?.message || "");
+  if (
+    code === "ECONNABORTED"
+    || /timeout/i.test(rawMessage)
+  ) {
+    return "Przesyłanie trwa zbyt długo. Sprawdź łącze albo spróbuj mniejszego zdjęcia.";
+  }
   const data = error?.response?.data;
-  if (data == null) return error?.message || fallback;
+  if (data == null) return rawMessage || fallback;
   if (typeof data === "string") {
     if (data.includes("<!doctype") || data.includes("<html")) {
       const status = error?.response?.status;

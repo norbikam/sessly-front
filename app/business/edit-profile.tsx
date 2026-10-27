@@ -14,6 +14,7 @@ import {
   lookupBusinessRegistry,
   updateBusinessProfile,
   uploadBusinessImage,
+  uploadBusinessLogo,
   UploadAsset,
 } from '../../api/business';
 import { goBackToApp } from '../../utils/navigation';
@@ -257,14 +258,25 @@ export default function EditBusinessProfileScreen() {
         payload.deposit_percent = 0;
       }
 
-      await updateBusinessProfile(businessId, payload, logoAsset);
+      // Text first (fast), then media in parallel — avoids stacking two long uploads.
+      await updateBusinessProfile(businessId, payload);
 
-      if (bannerAsset && (businessSlug || activeLocation?.slug)) {
-        await uploadBusinessImage(businessSlug || activeLocation!.slug, bannerAsset, {
-          is_cover: true,
-          caption: 'Baner',
-          sort_order: 0,
-        });
+      const slug = businessSlug || activeLocation?.slug || null;
+      const mediaJobs: Promise<unknown>[] = [];
+      if (logoAsset) {
+        mediaJobs.push(uploadBusinessLogo(businessId, logoAsset));
+      }
+      if (bannerAsset && slug) {
+        mediaJobs.push(
+          uploadBusinessImage(slug, bannerAsset, {
+            is_cover: true,
+            caption: 'Baner',
+            sort_order: 0,
+          }),
+        );
+      }
+      if (mediaJobs.length) {
+        await Promise.all(mediaJobs);
       }
 
       notify('Sukces!', 'Wizytówka Twojego salonu została pomyślnie zaktualizowana.');
