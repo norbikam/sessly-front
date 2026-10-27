@@ -269,6 +269,26 @@ export default function BusinessDetailScreen() {
     }
   };
 
+  const services = ((business as any)?.services || []) as Service[];
+  const serviceGroups = useMemo(() => {
+    const categories = Array.from(
+      new Map(
+        services
+          .map((service) => service.category)
+          .filter(Boolean)
+          .map((category) => [String(category!.id), category!]),
+      ).values(),
+    );
+    return filterServiceGroups(
+      buildServiceGroups(services, categories, t('booking.uncategorized')),
+      serviceQuery,
+    );
+  }, [services, serviceQuery, t]);
+
+  const toggleCategory = (id: string) => {
+    setCollapsedCategories((current) => ({ ...current, [id]: !current[id] }));
+  };
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -289,25 +309,6 @@ export default function BusinessDetailScreen() {
     );
   }
 
-  const services = ((business as any).services || []) as Service[];
-  const serviceGroups = useMemo(() => {
-    const categories = Array.from(
-      new Map(
-        services
-          .map((service) => service.category)
-          .filter(Boolean)
-          .map((category) => [String(category!.id), category!]),
-      ).values(),
-    );
-    return filterServiceGroups(
-      buildServiceGroups(services, categories, t('booking.uncategorized')),
-      serviceQuery,
-    );
-  }, [services, serviceQuery, t]);
-
-  const toggleCategory = (id: string) => {
-    setCollapsedCategories((current) => ({ ...current, [id]: !current[id] }));
-  };
   const hours = (business as any).opening_hours || [];
   const address = `${business.address_line1 || ''}, ${(business as any).city || ''}`.replace(/^,\s*/, '').replace(/,\s*$/, '');
   const businessId = String(business.id);
