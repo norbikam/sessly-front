@@ -209,6 +209,13 @@ export default function AppointmentsScreen() {
     try {
       const payment = await payAppointmentDeposit(String(appointment.id));
       if (payment.checkout_url) {
+        const { isAllowedCheckoutUrl } = await import('../../utils/safeUrl');
+        if (!isAllowedCheckoutUrl(payment.checkout_url)) {
+          const msg = 'Niebezpieczny adres płatności — przerwano.';
+          if (Platform.OS === 'web') window.alert(msg);
+          else Alert.alert('Błąd', msg);
+          return;
+        }
         await Linking.openURL(payment.checkout_url);
       } else if (payment.status === 'paid') {
         const msg = 'Zaliczka została opłacona.';

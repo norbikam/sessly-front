@@ -62,10 +62,8 @@ export const getUserAppointments = async (
     if (filters?.time) params.append('time', filters.time);
 
     const url = `/users/appointments/${params.toString() ? `?${params}` : ''}`;
-    console.log('📤 [getUserAppointments] URL:', url);
 
     const response = await apiClient.get<any>(url);
-    console.log('✅ [getUserAppointments] Response:', response.data);
 
     // ✅ FIX: Normalizacja różnych formatów odpowiedzi
     let appointments: Appointment[] = [];
@@ -81,7 +79,6 @@ export const getUserAppointments = async (
       return [];
     }
 
-    console.log(`✅ [getUserAppointments] Loaded ${appointments.length} appointments`);
     return appointments;
   } catch (error: any) {
     console.error('❌ [getUserAppointments] Error:', error);
@@ -108,11 +105,9 @@ export const getAppointmentDetail = async (
   appointmentId: string
 ): Promise<Appointment> => {
   try {
-    console.log('📤 [getAppointmentDetail] ID:', appointmentId);
     const response = await apiClient.get<Appointment>(
       `/users/appointments/${appointmentId}/`
     );
-    console.log('✅ [getAppointmentDetail] Success:', response.data);
     return response.data;
   } catch (error) {
     console.error('❌ [getAppointmentDetail] Error:', error);
@@ -129,12 +124,10 @@ export const cancelAppointment = async (
   appointmentId: string
 ): Promise<Appointment> => {
   try {
-    console.log('📤 [cancelAppointment] ID:', appointmentId);
     const response = await apiClient.post<any>(
       `/users/appointments/${appointmentId}/cancel/`,
       {}
     );
-    console.log('✅ [cancelAppointment] Response:', response.data);
 
     // Backend zwraca { data: Appointment, message: "..." }
     if (response.data.data) {
@@ -181,12 +174,10 @@ export const createAppointment = async (
   data: CreateAppointmentData
 ): Promise<CreateAppointmentResponse> => {
   try {
-    console.log('📤 [createAppointment] Slug:', businessSlug, 'Data:', data);
     const response = await apiClient.post<CreateAppointmentResponse>(
       `/businesses/${businessSlug}/appointments/`,
       data
     );
-    console.log('✅ [createAppointment] Success:', response.data);
     return response.data;
   } catch (error: any) {
     console.error('❌ [createAppointment] Error:', error);
@@ -234,10 +225,8 @@ export const getAvailability = async (
       );
     }
     const url = `/businesses/${businessSlug}/availability/?${params.toString()}`;
-    console.log('📤 [getAvailability] URL:', url);
 
     const response = await apiClient.get<AvailabilityResponse>(url);
-    console.log('✅ [getAvailability] Success:', response.data);
     
     return response.data;
   } catch (error) {
@@ -253,9 +242,7 @@ export const getAvailability = async (
  */
 export const deleteAppointment = async (appointmentId: string): Promise<void> => {
   try {
-    console.log('📤 [deleteAppointment] ID:', appointmentId);
     await apiClient.delete(`/users/appointments/${appointmentId}/`);
-    console.log('✅ [deleteAppointment] Success');
   } catch (error) {
     console.error('❌ [deleteAppointment] Error:', error);
     throw error;
@@ -291,10 +278,8 @@ export const getBusinessAppointments = async (
     const url = `/businesses/${businessSlug}/appointments/${
       params.toString() ? `?${params}` : ''
     }`;
-    console.log('📤 [getBusinessAppointments] URL:', url);
 
     const response = await apiClient.get<any>(url);
-    console.log('✅ [getBusinessAppointments] Response:', response.data);
 
     // Normalizacja odpowiedzi z różnych wersji backendu
     if (Array.isArray(response.data)) {
@@ -438,9 +423,7 @@ export const deleteBusinessAppointment = async (
   appointmentId: string
 ): Promise<void> => {
   try {
-    console.log('📤 [deleteBusinessAppointment] Slug:', businessSlug, 'ID:', appointmentId);
     await apiClient.delete(`/businesses/${businessSlug}/appointments/${appointmentId}/`);
-    console.log('✅ [deleteBusinessAppointment] Success');
   } catch (error) {
     console.error('❌ [deleteBusinessAppointment] Error:', error);
     throw error;

@@ -7,6 +7,10 @@ import { goBackToApp } from '../../utils/navigation';
 import { resendVerificationCode, verifyEmail } from '../../api/verification';
 import { useAuth } from '../../contexts/AuthContext';
 import Colors from '../../constants/Colors';
+import {
+  captureAndScrubAuthSecrets,
+  clearAuthSecretHandoff,
+} from '../../utils/authSecrets';
 import { notify } from '../../utils/notify';
 
 const RESEND_COOLDOWN_SEC = 60;
@@ -15,13 +19,20 @@ export default function VerifyEmailScreen() {
   const router = useRouter();
   const { isLoggedIn, refreshUser, updateUser, isLoading: authLoading } = useAuth();
   const params = useLocalSearchParams<{ email?: string; code?: string; token?: string }>();
-  const [email, setEmail] = useState(params.email || '');
-  const [code, setCode] = useState(params.code || '');
+  const [boot] = useState(() =>
+    captureAndScrubAuthSecrets(
+      { email: params.email, code: params.code, token: params.token },
+      'verify',
+    ),
+  );
+  const [email, setEmail] = useState(boot.email);
+  const [code, setCode] = useState(boot.code);
+  const [token] = useState(boot.token);
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
-  const [autoTried, setAutoTried] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const submittingRef = useRef(false);
+  const autoTriedRef = useRef(false);
 
   useEffect(() => {
     if (cooldown <= 0) return undefined;
@@ -39,17 +50,18 @@ export default function VerifyEmailScreen() {
 
   const submit = async (opts?: { token?: string; email?: string; code?: string }) => {
     if (submittingRef.current) return;
-    const token = (opts?.token ?? params.token ?? '').toString().trim();
+    const linkToken = (opts?.token ?? token ?? '').toString().trim();
     const mail = (opts?.email ?? email).trim();
     const pin = (opts?.code ?? code).trim();
-    if (!token && (!mail || pin.length !== 6)) {
+    if (!linkToken && (!mail || pin.length !== 6)) {
       notify('Brak danych', 'Podaj e-mail oraz 6-cyfrowy kod albo użyj linku z maila.');
       return;
     }
     try {
       submittingRef.current = true;
       setLoading(true);
-      await verifyEmail({ email: mail, code: pin, token });
+      await verifyEmail({ email: mail, code: pin, token: linkToken });
+      clearAuthSecretHandoff('verify');
       await markVerifiedLocally();
       notify('Konto aktywne', 'Adres e-mail został potwierdzony.');
       router.replace(isLoggedIn ? '/(tabs)' : '/(auth)/login');
@@ -58,6 +70,7 @@ export default function VerifyEmailScreen() {
       // Idempotent API / used link: refresh from server; only succeed if actually verified.
       await refreshUser();
       if (/już potwierdzony|already/i.test(message)) {
+        clearAuthSecretHandoff('verify');
         await updateUser({
           email_verified: true,
           email_verified_at: new Date().toISOString(),
@@ -74,18 +87,19 @@ export default function VerifyEmailScreen() {
   };
 
   useEffect(() => {
-    if (autoTried || authLoading) return;
-    const token = (params.token || '').toString().trim();
-    const pin = (params.code || '').toString().trim();
-    if (token || (params.email && pin.length === 6)) {
-      setAutoTried(true);
-      void submit({
-        token,
-        email: (params.email || '').toString(),
-        code: pin,
-      });
-    }
-  }, [params.token, params.email, params.code, autoTried, authLoading]);
+    if (autoTriedRef.current || authLoading) return;
+    const linkToken = token.trim();
+    const pin = code.trim();
+    if (!(linkToken || (email && pin.length === 6))) return;
+    autoTriedRef.current = true;
+    // Defer so loading state updates are not synchronous inside the effect body.
+    const timer = setTimeout(() => {
+      void submit({ token: linkToken, email, code: pin });
+    }, 0);
+    return () => clearTimeout(timer);
+    // Auto-submit once from deep-link secrets; submit closes over current fields.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, email, code, authLoading]);
 
   const resend = async () => {
     if (!email.trim() || cooldown > 0) return;

@@ -1,18 +1,21 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
-import { 
-  login as apiLogin, 
-  register as apiRegister, 
+import {
+  login as apiLogin,
+  register as apiRegister,
   logout as apiLogout,
-  getCurrentUser // <--- DODANY IMPORT
+  getCurrentUser,
 } from '../api/auth';
 import { RegisterRequest, User } from '../types/api';
 import {
+  clearUserProfile,
   forgetAccount,
   getSavedAccounts,
+  getStoredUserProfile,
+  getToken,
   rememberAccount,
+  removeToken,
   saveToken,
+  saveUserProfile,
   SavedAccount,
 } from '../utils/storage';
 import { onSessionExpired } from '../utils/session';
@@ -44,17 +47,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function loadStoredUser() {
     try {
-      let storedUserStr: string | null = null;
-      let accessToken: string | null = null;
-
-      if (Platform.OS === 'web') {
-        storedUserStr = localStorage.getItem('user');
-        accessToken = localStorage.getItem('access_token');
-      } else {
-        const [userItem, tokenItem] = await AsyncStorage.multiGet(['user', 'access_token']);
-        storedUserStr = userItem[1];
-        accessToken = tokenItem[1];
-      }
+      const storedUserStr = await getStoredUserProfile();
+      const accessToken = await getToken();
 
       if (storedUserStr && accessToken) {
         setUser(JSON.parse(storedUserStr));
@@ -62,11 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // after magic-link confirmation in another tab/session.
         try {
           const userData = await getCurrentUser();
-          if (Platform.OS === 'web') {
-            localStorage.setItem('user', JSON.stringify(userData));
-          } else {
-            await AsyncStorage.setItem('user', JSON.stringify(userData));
-          }
+          await saveUserProfile(userData, true);
           setUser(userData);
         } catch (refreshError) {
           console.error('Failed to refresh stored user from API:', refreshError);
@@ -99,16 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user?.id]);
 
   const persistUser = async (userData: User, persist = isPersistentSession) => {
-    if (!persist) {
-      if (Platform.OS === 'web') localStorage.removeItem('user');
-      else await AsyncStorage.removeItem('user');
-      return;
-    }
-    if (Platform.OS === 'web') {
-      localStorage.setItem('user', JSON.stringify(userData));
-    } else {
-      await AsyncStorage.setItem('user', JSON.stringify(userData));
-    }
+    await saveUserProfile(userData, persist);
   };
 
   const login = async (credentials: Credentials, shouldRemember = false) => {
@@ -153,13 +134,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await apiLogout();
     } finally {
       if (accountId) setSavedAccounts(await forgetAccount(accountId));
-      if (Platform.OS === 'web') {
-        localStorage.removeItem('user');
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
-      } else {
-        await AsyncStorage.multiRemove(['access_token', 'refresh_token', 'user']);
-      }
+      await removeToken();
+      await clearUserProfile();
       setUser(null);
     }
   };
@@ -188,27 +164,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const updateUser = async (userData: Partial<User>) => {
     if (!user) return;
     const updatedUser = { ...user, ...userData };
-    
-    if (Platform.OS === 'web') {
-      localStorage.setItem('user', JSON.stringify(updatedUser));
-    } else {
-      await AsyncStorage.setItem('user', JSON.stringify(updatedUser));
-    }
-    
+    await saveUserProfile(updatedUser, isPersistentSession);
     setUser(updatedUser);
   };
 
-  // <--- DODANA FUNKCJA REFRESH USER --->
   const refreshUser = async () => {
     try {
       const userData = await getCurrentUser();
-      
-      if (Platform.OS === 'web') {
-        localStorage.setItem('user', JSON.stringify(userData));
-      } else {
-        await AsyncStorage.setItem('user', JSON.stringify(userData));
-      }
-      
+      await saveUserProfile(userData, isPersistentSession);
       setUser(userData);
     } catch (error) {
       console.error('❌ [AuthContext] Failed to refresh user from API:', error);

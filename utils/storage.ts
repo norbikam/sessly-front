@@ -1,18 +1,15 @@
-// utils/storage.ts
+// utils/storage.ts — tokens: SecureStore (native) / session|localStorage (web)
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { User } from '../types/api';
 
-// ✅ POPRAWKA: Użyj tych samych kluczy co AuthContext
-const TOKEN_KEY = 'access_token';      // ✅ Zmienione (było: '@auth_token')
-const REFRESH_TOKEN_KEY = 'refresh_token'; // ✅ Zmienione (było: '@refresh_token')
-
-// ✅ Web fallback keys
-const WEB_TOKEN_KEY = 'access_token';
-const WEB_REFRESH_TOKEN_KEY = 'refresh_token';
+const TOKEN_KEY = 'access_token';
+const REFRESH_TOKEN_KEY = 'refresh_token';
+const USER_KEY = 'user';
 const SAVED_ACCOUNTS_KEY = 'sessly_saved_accounts';
+
 let memoryAccessToken: string | null = null;
 let memoryRefreshToken: string | null = null;
 let sessionOnly = false;
@@ -24,19 +21,91 @@ export type SavedAccount = {
   refreshToken: string;
 };
 
+const secureOpts = {
+  keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+};
+
+async function nativeGet(key: string): Promise<string | null> {
+  try {
+    const secure = await SecureStore.getItemAsync(key);
+    if (secure != null) return secure;
+    // One-time migrate from AsyncStorage (pre-hardening builds).
+    const legacy = await AsyncStorage.getItem(key);
+    if (legacy) {
+      await SecureStore.setItemAsync(key, legacy, secureOpts);
+      await AsyncStorage.removeItem(key);
+      return legacy;
+    }
+    return null;
+  } catch {
+    return AsyncStorage.getItem(key);
+  }
+}
+
+async function nativeSet(key: string, value: string): Promise<void> {
+  try {
+    await SecureStore.setItemAsync(key, value, secureOpts);
+    await AsyncStorage.removeItem(key);
+  } catch {
+    await AsyncStorage.setItem(key, value);
+  }
+}
+
+async function nativeDelete(key: string): Promise<void> {
+  try {
+    await SecureStore.deleteItemAsync(key);
+  } catch {
+    /* ignore */
+  }
+  await AsyncStorage.removeItem(key);
+}
+
+function webTokenStore(persist: boolean): Storage {
+  if (typeof window === 'undefined') {
+    throw new Error('Web storage unavailable');
+  }
+  // Remember-me → localStorage; otherwise sessionStorage (clears with tab).
+  return persist ? window.localStorage : window.sessionStorage;
+}
+
+function webReadToken(key: string): string | null {
+  if (typeof window === 'undefined') return null;
+  return (
+    window.sessionStorage.getItem(key) ||
+    window.localStorage.getItem(key)
+  );
+}
+
+function webWriteToken(key: string, value: string, persist: boolean): void {
+  const store = webTokenStore(persist);
+  store.setItem(key, value);
+  // Avoid leaving copies in the other store.
+  const other = persist ? window.sessionStorage : window.localStorage;
+  other.removeItem(key);
+}
+
+function webClearTokens(): void {
+  if (typeof window === 'undefined') return;
+  for (const key of [TOKEN_KEY, REFRESH_TOKEN_KEY]) {
+    window.sessionStorage.removeItem(key);
+    window.localStorage.removeItem(key);
+  }
+}
+
 const readSavedAccountsValue = async (): Promise<string | null> => {
-  if (Platform.OS === 'web') return localStorage.getItem(SAVED_ACCOUNTS_KEY);
-  return SecureStore.getItemAsync(SAVED_ACCOUNTS_KEY);
+  if (Platform.OS === 'web') {
+    if (typeof window === 'undefined') return null;
+    return window.localStorage.getItem(SAVED_ACCOUNTS_KEY);
+  }
+  return nativeGet(SAVED_ACCOUNTS_KEY);
 };
 
 const writeSavedAccountsValue = async (value: string): Promise<void> => {
   if (Platform.OS === 'web') {
-    localStorage.setItem(SAVED_ACCOUNTS_KEY, value);
+    window.localStorage.setItem(SAVED_ACCOUNTS_KEY, value);
     return;
   }
-  await SecureStore.setItemAsync(SAVED_ACCOUNTS_KEY, value, {
-    keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-  });
+  await nativeSet(SAVED_ACCOUNTS_KEY, value);
 };
 
 export const getSavedAccounts = async (): Promise<SavedAccount[]> => {
@@ -66,44 +135,44 @@ export const forgetAccount = async (id: string): Promise<SavedAccount[]> => {
   return next;
 };
 
-export const saveToken = async (accessToken: string, refreshToken: string, persist = true): Promise<void> => {
-  try {
-    memoryAccessToken = accessToken;
-    memoryRefreshToken = refreshToken;
-    sessionOnly = !persist;
-    if (persist) {
-      await AsyncStorage.setItem(TOKEN_KEY, accessToken);
-      await AsyncStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
-      if (Platform.OS === 'web') {
-        localStorage.setItem(WEB_TOKEN_KEY, accessToken);
-        localStorage.setItem(WEB_REFRESH_TOKEN_KEY, refreshToken);
-      }
+export const saveToken = async (
+  accessToken: string,
+  refreshToken: string,
+  persist = true,
+): Promise<void> => {
+  memoryAccessToken = accessToken;
+  memoryRefreshToken = refreshToken;
+  sessionOnly = !persist;
+
+  if (!persist) {
+    if (Platform.OS === 'web') {
+      webClearTokens();
+      webWriteToken(TOKEN_KEY, accessToken, false);
+      webWriteToken(REFRESH_TOKEN_KEY, refreshToken, false);
     } else {
-      await AsyncStorage.multiRemove([TOKEN_KEY, REFRESH_TOKEN_KEY]);
-      if (Platform.OS === 'web') {
-        localStorage.removeItem(WEB_TOKEN_KEY);
-        localStorage.removeItem(WEB_REFRESH_TOKEN_KEY);
-      }
+      await nativeDelete(TOKEN_KEY);
+      await nativeDelete(REFRESH_TOKEN_KEY);
     }
-  } catch (error) {
-    console.error('❌ Error saving tokens:', error);
-    throw error;
+    return;
+  }
+
+  if (Platform.OS === 'web') {
+    webWriteToken(TOKEN_KEY, accessToken, true);
+    webWriteToken(REFRESH_TOKEN_KEY, refreshToken, true);
+  } else {
+    await nativeSet(TOKEN_KEY, accessToken);
+    await nativeSet(REFRESH_TOKEN_KEY, refreshToken);
   }
 };
 
 export const getToken = async (): Promise<string | null> => {
   try {
     if (memoryAccessToken) return memoryAccessToken;
-    let token = await AsyncStorage.getItem(TOKEN_KEY);
-    
-    if (!token && Platform.OS === 'web') {
-      token = localStorage.getItem('access_token');
-      console.log('🔵 Token from localStorage:', token ? 'EXISTS ✅' : 'MISSING ❌');
-    }
+    const token =
+      Platform.OS === 'web' ? webReadToken(TOKEN_KEY) : await nativeGet(TOKEN_KEY);
     memoryAccessToken = token;
     return token;
-  } catch (error) {
-    console.error('❌ Error getting token:', error);
+  } catch {
     return null;
   }
 };
@@ -111,40 +180,81 @@ export const getToken = async (): Promise<string | null> => {
 export const getRefreshToken = async (): Promise<string | null> => {
   try {
     if (memoryRefreshToken) return memoryRefreshToken;
-    let token = await AsyncStorage.getItem(REFRESH_TOKEN_KEY);
-    
-    if (!token && Platform.OS === 'web') {
-      token = localStorage.getItem(WEB_REFRESH_TOKEN_KEY);
-    }
+    const token =
+      Platform.OS === 'web'
+        ? webReadToken(REFRESH_TOKEN_KEY)
+        : await nativeGet(REFRESH_TOKEN_KEY);
     memoryRefreshToken = token;
     return token;
-  } catch (error) {
-    console.error('❌ Error getting refresh token:', error);
+  } catch {
     return null;
   }
 };
 
 export const updateAccessToken = async (accessToken: string): Promise<void> => {
   memoryAccessToken = accessToken;
-  if (sessionOnly) return;
-  await AsyncStorage.setItem(TOKEN_KEY, accessToken);
-  if (Platform.OS === 'web') localStorage.setItem(WEB_TOKEN_KEY, accessToken);
+  if (sessionOnly) {
+    if (Platform.OS === 'web') {
+      webWriteToken(TOKEN_KEY, accessToken, false);
+    }
+    return;
+  }
+  if (Platform.OS === 'web') {
+    webWriteToken(TOKEN_KEY, accessToken, true);
+  } else {
+    await nativeSet(TOKEN_KEY, accessToken);
+  }
 };
 
 export const removeToken = async (): Promise<void> => {
-  try {
-    memoryAccessToken = null;
-    memoryRefreshToken = null;
-    sessionOnly = false;
-    await AsyncStorage.multiRemove([TOKEN_KEY, REFRESH_TOKEN_KEY, 'user']);
+  memoryAccessToken = null;
+  memoryRefreshToken = null;
+  sessionOnly = false;
+  if (Platform.OS === 'web') {
+    webClearTokens();
+    window.localStorage.removeItem(USER_KEY);
+    window.sessionStorage.removeItem(USER_KEY);
+  } else {
+    await nativeDelete(TOKEN_KEY);
+    await nativeDelete(REFRESH_TOKEN_KEY);
+    await AsyncStorage.removeItem(USER_KEY);
+  }
+};
 
+export const saveUserProfile = async (user: User, persist = true): Promise<void> => {
+  const raw = JSON.stringify(user);
+  if (!persist) {
     if (Platform.OS === 'web') {
-      localStorage.removeItem(WEB_TOKEN_KEY);
-      localStorage.removeItem(WEB_REFRESH_TOKEN_KEY);
-      localStorage.removeItem('user');
+      window.localStorage.removeItem(USER_KEY);
+      window.sessionStorage.setItem(USER_KEY, raw);
+    } else {
+      await AsyncStorage.removeItem(USER_KEY);
     }
-  } catch (error) {
-    console.error('❌ Error removing tokens:', error);
-    throw error;
+    return;
+  }
+  if (Platform.OS === 'web') {
+    window.localStorage.setItem(USER_KEY, raw);
+    window.sessionStorage.removeItem(USER_KEY);
+  } else {
+    await AsyncStorage.setItem(USER_KEY, raw);
+  }
+};
+
+export const getStoredUserProfile = async (): Promise<string | null> => {
+  if (Platform.OS === 'web') {
+    return (
+      window.sessionStorage.getItem(USER_KEY) ||
+      window.localStorage.getItem(USER_KEY)
+    );
+  }
+  return AsyncStorage.getItem(USER_KEY);
+};
+
+export const clearUserProfile = async (): Promise<void> => {
+  if (Platform.OS === 'web') {
+    window.localStorage.removeItem(USER_KEY);
+    window.sessionStorage.removeItem(USER_KEY);
+  } else {
+    await AsyncStorage.removeItem(USER_KEY);
   }
 };

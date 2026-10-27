@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   ActivityIndicator, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
@@ -8,6 +8,10 @@ import { goBackToApp } from '../../utils/navigation';
 
 import { confirmPasswordReset, requestPasswordReset } from '../../api/verification';
 import Colors from '../../constants/Colors';
+import {
+  captureAndScrubAuthSecrets,
+  clearAuthSecretHandoff,
+} from '../../utils/authSecrets';
 import { notify } from '../../utils/notify';
 
 type Step = 'email' | 'reset';
@@ -15,20 +19,19 @@ type Step = 'email' | 'reset';
 export default function ForgotPasswordScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ email?: string; code?: string; token?: string }>();
-  const [step, setStep] = useState<Step>(params.code || params.token ? 'reset' : 'email');
-  const [email, setEmail] = useState(params.email || '');
-  const [code, setCode] = useState(params.code || '');
-  const [token, setToken] = useState(params.token || '');
+  const [boot] = useState(() =>
+    captureAndScrubAuthSecrets(
+      { email: params.email, code: params.code, token: params.token },
+      'reset',
+    ),
+  );
+  const [step, setStep] = useState<Step>(boot.code || boot.token ? 'reset' : 'email');
+  const [email, setEmail] = useState(boot.email);
+  const [code, setCode] = useState(boot.code);
+  const [token] = useState(boot.token);
   const [password, setPassword] = useState('');
   const [password2, setPassword2] = useState('');
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (params.email) setEmail(String(params.email));
-    if (params.code) setCode(String(params.code));
-    if (params.token) setToken(String(params.token));
-    if (params.code || params.token) setStep('reset');
-  }, [params.email, params.code, params.token]);
 
   const sendCode = async () => {
     if (!email.trim() || !email.includes('@')) {
@@ -72,6 +75,7 @@ export default function ForgotPasswordScreen() {
         newPassword: password,
         newPassword2: password2,
       });
+      clearAuthSecretHandoff('reset');
       notify('Gotowe', 'Hasło zostało zmienione. Możesz się zalogować.');
       router.replace('/(auth)/login');
     } catch (error: any) {

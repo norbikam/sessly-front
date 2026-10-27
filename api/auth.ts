@@ -57,12 +57,6 @@ export const login = async (
 export const register = async (
   data: RegisterWithRoleRequest,
 ): Promise<LoginResponse> => {
-  console.log("🚀 Starting registration process");
-  console.log("📤 Sending payload:", {
-    username: data.username,
-    email: data.email,
-  });
-
   // Wyślij TYLKO wypełnione pola
   const payload: RegisterWithRoleRequest = {
     username: data.username.trim(),
@@ -125,7 +119,6 @@ export const register = async (
       "/users/register/",
       payload,
     );
-    console.log("✅ Registration successful:", response.data);
 
     return response.data;
   } catch (error: any) {
@@ -134,25 +127,16 @@ export const register = async (
 };
 
 export const logout = async (): Promise<void> => {
-  console.log("🚪 Logout initiated");
-
   try {
     const token = await getToken();
-    console.log("🔑 Token status:", token ? "EXISTS" : "MISSING");
-
     if (token) {
-      console.log("📤 Sending logout request...");
       const refresh = await getRefreshToken();
       await apiClient.post("/users/logout/", { refresh });
-      console.log("✅ Backend logout successful");
     }
-  } catch (error: any) {
-    console.warn("⚠️ Backend logout failed:", error.response?.status);
-    console.log("📝 Continuing with local logout...");
+  } catch {
+    // Continue with local logout even if the API call fails.
   } finally {
-    console.log("🗑️ Removing local tokens...");
     await removeToken();
-    console.log("✅ Logout complete");
   }
 };
 
@@ -251,8 +235,6 @@ export const registerAsCustomer = register;
 export const registerAsBusinessOwner = async (
   data: RegisterBusinessData,
 ): Promise<LoginResponse> => {
-  console.log("🏢 Starting business owner registration");
-
   // Rejestracja atomowa: user + business w jednym requestcie.
   const ownerRegistrationData: RegisterWithRoleRequest = {
     username: data.username,
