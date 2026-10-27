@@ -9,6 +9,7 @@ import {
   Alert,
   RefreshControl,
   Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { useRouter, useFocusEffect, useSegments } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -119,6 +120,8 @@ function StatCard({
 export default function BusinessDashboard() {
   const router = useRouter();
   const segments = useSegments();
+  const { width } = useWindowDimensions();
+  const isDesktop = Platform.OS === 'web' && width >= 1024;
   const { user, logout } = useAuth();
   const { activeLocation } = useLocation();
   const [business, setBusiness] = useState<any>(null);
@@ -232,7 +235,7 @@ export default function BusinessDashboard() {
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.scroll}
+      contentContainerStyle={[styles.scroll, isDesktop && styles.scrollDesktop]}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.accent} />
       }
@@ -243,7 +246,7 @@ export default function BusinessDashboard() {
         colors={['#4F46E5', '#7C3AED', '#9333EA']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={styles.header}
+        style={[styles.header, isDesktop && styles.headerDesktop]}
       >
         {/* decorative circles */}
         <View style={styles.deco1} />
@@ -299,7 +302,7 @@ export default function BusinessDashboard() {
 
       {needsOnboarding ? (
         <TouchableOpacity
-          style={styles.onboardingBanner}
+          style={[styles.onboardingBanner, isDesktop && { marginHorizontal: 28 }]}
           onPress={() => router.push('/business/onboarding' as any)}
         >
           <View style={styles.onboardingIcon}>
@@ -316,7 +319,7 @@ export default function BusinessDashboard() {
       ) : null}
 
       {/* ── UPCOMING APPOINTMENTS ── */}
-      <View style={styles.section}>
+      <View style={[styles.section, isDesktop && styles.sectionDesktop]}>
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Najbliższe wizyty</Text>
           <TouchableOpacity onPress={() => router.push('/business/schedule' as any)}>
@@ -405,13 +408,13 @@ export default function BusinessDashboard() {
       </View>
 
       {/* ── QUICK ACTIONS ── */}
-      <View style={styles.section}>
+      <View style={[styles.section, isDesktop && styles.sectionDesktop]}>
         <Text style={styles.sectionTitle}>Panel zarządzania</Text>
         <View style={styles.actionsGrid}>
           {ACTIONS.map((action) => (
             <TouchableOpacity
               key={action.route}
-              style={styles.actionCard}
+              style={[styles.actionCard, isDesktop && styles.actionCardDesktop]}
               onPress={() => router.push(action.route as any)}
               activeOpacity={0.85}
             >
@@ -432,7 +435,7 @@ export default function BusinessDashboard() {
       </View>
 
       {stats ? (
-        <View style={styles.section}>
+        <View style={[styles.section, isDesktop && styles.sectionDesktop]}>
           <Text style={styles.sectionTitle}>Bieżący miesiąc</Text>
           <View style={styles.summaryGrid}>
             <StatCard
@@ -503,7 +506,7 @@ export default function BusinessDashboard() {
 
       {/* ── PROFILE COMPLETION ── */}
       {(!business?.description || !business?.phone_number || !business?.address_line1) && (
-        <View style={styles.section}>
+        <View style={[styles.section, isDesktop && styles.sectionDesktop]}>
           <TouchableOpacity
             style={styles.completionCard}
             onPress={() => router.push('/business/edit-profile' as any)}
@@ -531,6 +534,19 @@ export default function BusinessDashboard() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
   scroll: { paddingBottom: 40 },
+  // Wide enough to use a 32" screen without reading left↔right across the whole display
+  scrollDesktop: {
+    maxWidth: 1200,
+    width: '100%',
+    alignSelf: 'center',
+    paddingBottom: 48,
+  },
+  headerDesktop: {
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    paddingHorizontal: 28,
+  },
+  sectionDesktop: { paddingHorizontal: 28 },
   centerScreen: {
     flex: 1,
     justifyContent: 'center',
@@ -643,6 +659,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 8,
     elevation: 2,
+  },
+  actionCardDesktop: {
+    width: '31.5%',
   },
   actionIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
   actionLabel: { fontSize: 14, fontWeight: '700', color: '#1E293B' },

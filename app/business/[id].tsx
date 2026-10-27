@@ -836,7 +836,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center', ...Colors.shadows.sm
   },
   scrollContent: { paddingBottom: 120 },
-  webScrollContent: { maxWidth: 880, alignSelf: 'center', width: '100%' },
+  // Full-bleed on desktop — only dialogs/cart need a tight max-width
+  webScrollContent: { width: '100%' },
   coverImage: { height: 280, backgroundColor: '#B8A3E0', justifyContent: 'center', alignItems: 'center', position: 'relative', overflow: 'hidden' },
   imageGradient: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 120 },
   mainInfoCard: {
@@ -950,9 +951,20 @@ const styles = StyleSheet.create({
     marginTop: 6, fontSize: 12, lineHeight: 16, color: '#64748B', fontWeight: '600', fontStyle: 'italic',
   },
   optionOverlay: {
-    flex: 1, backgroundColor: 'rgba(15,23,42,0.55)', justifyContent: 'center', padding: 20,
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
   },
-  optionCard: { backgroundColor: '#fff', borderRadius: 20, padding: 18 },
+  optionCard: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 18,
+    width: '100%',
+    maxWidth: 440,
+    ...Colors.shadows.sm,
+  },
   optionTitle: { fontSize: 18, fontWeight: '800', color: Colors.light.text },
   optionSubtitle: { marginTop: 4, marginBottom: 14, color: '#64748B', fontWeight: '600' },
   optionRow: {
