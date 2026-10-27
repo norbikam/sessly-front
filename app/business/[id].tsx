@@ -357,7 +357,16 @@ export default function BusinessDetailScreen() {
 
         {/* Główne informacje */}
         <View style={[styles.mainInfoCard, isWeb && styles.webCard]}>
-          <Text style={styles.title}>{business.name}</Text>
+          <View style={styles.titleRow}>
+            {business.logo_url ? (
+              <Image source={{ uri: business.logo_url }} style={styles.logoAvatar} contentFit="cover" />
+            ) : (
+              <View style={[styles.logoAvatar, styles.logoAvatarFallback, { backgroundColor: business.brand_color || '#EDE9FE' }]}>
+                <Text style={styles.logoAvatarLetter}>{(business.name || '?').slice(0, 1).toUpperCase()}</Text>
+              </View>
+            )}
+            <Text style={styles.title}>{business.name}</Text>
+          </View>
           {address ? (
             <View style={styles.infoRow}>
               <Ionicons name="location" size={16} color={Colors.light.accent} />
@@ -504,6 +513,13 @@ export default function BusinessDetailScreen() {
                             activeOpacity={0.7}
                             disabled={!canBook}
                           >
+                            {service.image_url ? (
+                              <Image
+                                source={{ uri: service.image_url }}
+                                style={styles.serviceThumb}
+                                contentFit="cover"
+                              />
+                            ) : null}
                             <View style={styles.serviceDetails}>
                               <Text style={styles.serviceName}>{localizedName(service, language)}</Text>
                               {localizedDescription(service, language) ? (
@@ -729,7 +745,14 @@ const styles = StyleSheet.create({
     marginTop: -32, padding: 24, ...Colors.shadows.sm
   },
   webCard: { borderRadius: 24, marginTop: 24, marginHorizontal: 20 },
-  title: { fontSize: 28, fontWeight: '900', color: Colors.light.text, marginBottom: 8 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 10 },
+  logoAvatar: { width: 56, height: 56, borderRadius: 16, backgroundColor: '#F5F3FF' },
+  logoAvatarFallback: { alignItems: 'center', justifyContent: 'center' },
+  logoAvatarLetter: { color: '#fff', fontSize: 22, fontWeight: '900' },
+  title: { flex: 1, fontSize: 28, fontWeight: '900', color: Colors.light.text },
+  serviceThumb: {
+    width: 64, height: 64, borderRadius: 14, marginRight: 12, backgroundColor: '#F5F3FF',
+  },
   infoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 6 },
   infoText: { fontSize: 15, color: Colors.light.textSecondary, flex: 1, fontWeight: '500' },
   actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 24 },
@@ -813,7 +836,7 @@ const styles = StyleSheet.create({
   emptyServices: { alignItems: 'center', paddingVertical: 40, gap: 10 },
   serviceItem: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingVertical: 18, paddingHorizontal: 14,
+    paddingVertical: 14, paddingHorizontal: 14,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E5E7EB',
   },
   serviceDetails: { flex: 1, paddingRight: 16 },

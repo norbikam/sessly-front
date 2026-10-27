@@ -4,17 +4,27 @@ import { Platform } from 'react-native';
 
 export type UploadAsset = { uri: string; fileName?: string | null; mimeType?: string | null };
 
+const normalizeImageMime = (value?: string | null) => {
+  const raw = (value || '').toLowerCase().trim();
+  if (!raw || raw === 'application/octet-stream') return 'image/jpeg';
+  if (raw === 'image/jpg' || raw === 'image/pjpeg') return 'image/jpeg';
+  return raw;
+};
+
 const appendUpload = async (form: FormData, field: string, asset: UploadAsset) => {
-  const name = asset.fileName || `sessly-${Date.now()}.jpg`;
-  const type = asset.mimeType || 'image/jpeg';
+  const rawName = asset.fileName || `sessly-${Date.now()}.jpg`;
+  const type = normalizeImageMime(asset.mimeType);
+  const name = /\.(jpe?g|png|webp)$/i.test(rawName)
+    ? rawName
+    : `${rawName.replace(/\.[^.]+$/, '') || 'sessly'}.${type.includes('png') ? 'png' : type.includes('webp') ? 'webp' : 'jpg'}`;
   if (Platform.OS === 'web') {
     const response = await fetch(asset.uri);
     const blob = await response.blob();
-    const mime = blob.type || type;
+    const mime = normalizeImageMime(blob.type || type);
     const file = typeof File !== 'undefined'
       ? new File([blob], name, { type: mime })
       : blob;
-    form.append(field, file, name);
+    form.append(field, file as Blob, name);
   } else {
     form.append(field, { uri: asset.uri, name, type } as any);
   }
@@ -212,7 +222,9 @@ export const uploadService = async (
   const form = new FormData();
   appendServiceFields(form, data);
   if (asset) await appendUpload(form, 'image', asset);
-  const response = await apiClient.post<Service>(`/businesses/${businessSlug}/services/`, form);
+  const response = await apiClient.post<Service>(`/businesses/${businessSlug}/services/`, form, {
+    headers: { 'Content-Type': undefined as unknown as string },
+  });
   return response.data;
 };
 
@@ -236,6 +248,7 @@ export const updateService = async (
   const response = await apiClient.patch<Service>(
     `/businesses/${businessSlug}/services/${serviceId}/`,
     form,
+    { headers: { 'Content-Type': undefined as unknown as string } },
   );
   return response.data;
 };

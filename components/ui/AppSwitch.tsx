@@ -45,7 +45,7 @@ export default function AppSwitch({
         <View
           style={[
             styles.webThumb,
-            { backgroundColor: thumb, transform: [{ translateX: on ? 20 : 0 }] },
+            { backgroundColor: thumb, left: on ? 23 : 3 },
           ]}
         />
       </Pressable>
@@ -68,10 +68,12 @@ const styles = StyleSheet.create({
     width: 48,
     height: 28,
     borderRadius: 14,
-    padding: 3,
-    justifyContent: 'center',
+    position: 'relative',
+    overflow: 'hidden',
   },
   webThumb: {
+    position: 'absolute',
+    top: 3,
     width: 22,
     height: 22,
     borderRadius: 11,

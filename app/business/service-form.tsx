@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
-  ActivityIndicator, KeyboardAvoidingView, Modal, Platform, ScrollView,
+  ActivityIndicator, KeyboardAvoidingView, Modal, Platform, ScrollView, Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
@@ -23,6 +23,11 @@ import { useLocation } from '../../contexts/LocationContext';
 import { convertCurrency, resolveDualPrices } from '../../utils/currency';
 import { formatApiError, notify } from '../../utils/notify';
 import { goBackToApp } from '../../utils/navigation';
+
+const IMAGE_PICKER_SIZE = Math.min(
+  Dimensions.get('window').width - 72,
+  Dimensions.get('window').height * 0.35,
+);
 
 const parseOptionalAmount = (value: string) => {
   const trimmed = value.trim();
@@ -71,11 +76,15 @@ export default function ServiceFormScreen() {
   const [promoUntil, setPromoUntil] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | undefined>();
   const [imageAsset, setImageAsset] = useState<UploadAsset | null>(null);
+  const [imageBroken, setImageBroken] = useState(false);
+  const [imageDragOver, setImageDragOver] = useState(false);
   const [showPromoCalendar, setShowPromoCalendar] = useState(false);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [priceIsIndicative, setPriceIsIndicative] = useState(false);
   const [pricingMode, setPricingMode] = useState<PricingMode>('simple');
   const [options, setOptions] = useState<OptionDraft[]>([]);
+  const previewUri = imageAsset?.uri || existing?.image_url || null;
+  const showImagePreview = Boolean(previewUri) && !imageBroken;
 
   const load = useCallback(async () => {
     if (!businessSlug) {
@@ -158,6 +167,19 @@ export default function ServiceFormScreen() {
     void load();
   }, [load]);
 
+  const applyImageFile = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      notify('Zdjęcie', 'Wybierz plik JPG, PNG lub WebP.');
+      return;
+    }
+    setImageBroken(false);
+    setImageAsset({
+      uri: URL.createObjectURL(file),
+      fileName: file.name,
+      mimeType: file.type || 'image/jpeg',
+    });
+  };
+
   const handlePickImage = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
@@ -170,8 +192,35 @@ export default function ServiceFormScreen() {
       aspect: [1, 1],
       quality: 0.85,
     });
-    if (!result.canceled) setImageAsset(result.assets[0]);
+    if (!result.canceled) {
+      setImageBroken(false);
+      setImageAsset(result.assets[0]);
+    }
   };
+
+  const webDropProps = useMemo(() => {
+    if (Platform.OS !== 'web') return {};
+    return {
+      onDragEnter: (event: any) => {
+        event.preventDefault?.();
+        setImageDragOver(true);
+      },
+      onDragOver: (event: any) => {
+        event.preventDefault?.();
+        setImageDragOver(true);
+      },
+      onDragLeave: (event: any) => {
+        event.preventDefault?.();
+        setImageDragOver(false);
+      },
+      onDrop: (event: any) => {
+        event.preventDefault?.();
+        setImageDragOver(false);
+        const file = event?.dataTransfer?.files?.[0] as File | undefined;
+        if (file) applyImageFile(file);
+      },
+    } as Record<string, unknown>;
+  }, []);
 
   const fillMissingFromPln = () => {
     const pln = parseOptionalAmount(pricePln);
@@ -410,13 +459,30 @@ export default function ServiceFormScreen() {
             <Text style={styles.hint}>{t('service.form.categoryHint')}</Text>
 
             <Text style={styles.inputLabel}>{t('service.form.image')}</Text>
-            <TouchableOpacity style={styles.imagePicker} onPress={handlePickImage}>
-              {imageAsset || existing?.image_url ? (
-                <Image source={{ uri: imageAsset?.uri || existing?.image_url }} style={styles.imagePreview} contentFit="cover" />
+            <TouchableOpacity
+              style={[
+                styles.imagePicker,
+                showImagePreview && styles.imagePickerFilled,
+                imageDragOver && styles.imagePickerDragOver,
+              ]}
+              onPress={handlePickImage}
+              activeOpacity={0.85}
+              {...webDropProps}
+            >
+              {showImagePreview ? (
+                <Image
+                  source={{ uri: previewUri as string }}
+                  style={styles.imagePreview}
+                  contentFit="cover"
+                  onError={() => setImageBroken(true)}
+                />
               ) : (
                 <>
-                  <Ionicons name="image-outline" size={26} color={Colors.light.accent} />
+                  <Ionicons name="image-outline" size={28} color={Colors.light.accent} />
                   <Text style={styles.imagePickerText}>{t('service.form.pickImage')}</Text>
+                  {Platform.OS === 'web' ? (
+                    <Text style={styles.imagePickerHint}>albo upuść plik tutaj · kwadrat, max 8 MB</Text>
+                  ) : null}
                 </>
               )}
             </TouchableOpacity>
@@ -761,11 +827,32 @@ const styles = StyleSheet.create({
   },
   manageCategoriesText: { color: Colors.light.accent, fontWeight: '800' },
   imagePicker: {
-    height: 100, marginBottom: 12, borderRadius: 14, borderStyle: 'dashed', borderWidth: 1,
-    borderColor: '#C4B5FD', backgroundColor: '#FAF5FF', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+    width: IMAGE_PICKER_SIZE,
+    height: IMAGE_PICKER_SIZE,
+    maxWidth: '100%',
+    alignSelf: 'center',
+    marginBottom: 14,
+    borderRadius: 18,
+    borderStyle: 'dashed',
+    borderWidth: 1.5,
+    borderColor: '#C4B5FD',
+    backgroundColor: '#FAF5FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  imagePickerFilled: {
+    borderStyle: 'solid',
+    borderColor: '#DDD6FE',
+    backgroundColor: '#F5F3FF',
+  },
+  imagePickerDragOver: {
+    borderColor: Colors.light.accent,
+    backgroundColor: '#EDE9FE',
   },
   imagePreview: { width: '100%', height: '100%' },
-  imagePickerText: { color: Colors.light.accent, fontWeight: '800', marginTop: 6 },
+  imagePickerText: { color: Colors.light.accent, fontWeight: '800', marginTop: 8, textAlign: 'center' },
+  imagePickerHint: { color: '#94A3B8', fontSize: 12, fontWeight: '600', marginTop: 6, textAlign: 'center', paddingHorizontal: 16 },
   dateButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   dateValue: { color: Colors.light.text, fontSize: 15 },
   datePlaceholder: { color: '#94A3B8', fontSize: 15 },

@@ -36,6 +36,8 @@ export default function EditBusinessProfileScreen() {
   const [nip, setNip] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
   const [logoAsset, setLogoAsset] = useState<UploadAsset | null>(null);
+  const [logoBroken, setLogoBroken] = useState(false);
+  const [logoDragOver, setLogoDragOver] = useState(false);
   const [brandColor, setBrandColor] = useState('#8B5CF6');
   
   // Adres
@@ -115,6 +117,19 @@ export default function EditBusinessProfileScreen() {
     }
   };
 
+  const applyLogoFile = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      notify('Logo', 'Wybierz plik JPG, PNG lub WebP.');
+      return;
+    }
+    setLogoBroken(false);
+    setLogoAsset({
+      uri: URL.createObjectURL(file),
+      fileName: file.name,
+      mimeType: file.type || 'image/jpeg',
+    });
+  };
+
   const handlePickLogo = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
@@ -127,8 +142,27 @@ export default function EditBusinessProfileScreen() {
       aspect: [1, 1],
       quality: 0.9,
     });
-    if (!result.canceled) setLogoAsset(result.assets[0]);
+    if (!result.canceled) {
+      setLogoBroken(false);
+      setLogoAsset(result.assets[0]);
+    }
   };
+
+  const logoPreviewUri = logoAsset?.uri || logoUrl || null;
+  const showLogoPreview = Boolean(logoPreviewUri) && !logoBroken;
+  const logoDropProps = Platform.OS === 'web'
+    ? ({
+        onDragEnter: (event: any) => { event.preventDefault?.(); setLogoDragOver(true); },
+        onDragOver: (event: any) => { event.preventDefault?.(); setLogoDragOver(true); },
+        onDragLeave: (event: any) => { event.preventDefault?.(); setLogoDragOver(false); },
+        onDrop: (event: any) => {
+          event.preventDefault?.();
+          setLogoDragOver(false);
+          const file = event?.dataTransfer?.files?.[0] as File | undefined;
+          if (file) applyLogoFile(file);
+        },
+      } as Record<string, unknown>)
+    : {};
 
   const handleSave = async () => {
     if (!name || !phone || !address || !city) {
@@ -279,15 +313,31 @@ export default function EditBusinessProfileScreen() {
           <Text style={styles.sectionTitle}>Wygląd wizytówki</Text>
 
           <Text style={styles.inputLabel}>Logo</Text>
-          <TouchableOpacity style={styles.logoPicker} onPress={handlePickLogo}>
-            {logoAsset || logoUrl ? (
-              <Image source={{ uri: logoAsset?.uri || logoUrl }} style={styles.logoPreview} contentFit="cover" />
-            ) : (
-              <Ionicons name="image-outline" size={34} color={Colors.light.accent} />
-            )}
+          <TouchableOpacity
+            style={[styles.logoPicker, logoDragOver && styles.logoPickerDragOver]}
+            onPress={handlePickLogo}
+            activeOpacity={0.85}
+            {...logoDropProps}
+          >
+            <View style={styles.logoPreviewWrap}>
+              {showLogoPreview ? (
+                <Image
+                  source={{ uri: logoPreviewUri as string }}
+                  style={styles.logoPreview}
+                  contentFit="cover"
+                  onError={() => setLogoBroken(true)}
+                />
+              ) : (
+                <Ionicons name="image-outline" size={34} color={Colors.light.accent} />
+              )}
+            </View>
             <View style={styles.logoPickerText}>
-              <Text style={styles.logoPickerTitle}>{logoAsset || logoUrl ? 'Zmień logo' : 'Wybierz logo'}</Text>
-              <Text style={styles.logoPickerHint}>Kwadratowe zdjęcie, maks. 8 MB</Text>
+              <Text style={styles.logoPickerTitle}>{showLogoPreview ? 'Zmień logo' : 'Wybierz logo'}</Text>
+              <Text style={styles.logoPickerHint}>
+                {Platform.OS === 'web'
+                  ? 'Kliknij lub upuść kwadratowe zdjęcie · JPG/PNG/WebP · max 8 MB'
+                  : 'Kwadratowe zdjęcie, maks. 8 MB'}
+              </Text>
             </View>
           </TouchableOpacity>
 
@@ -377,11 +427,19 @@ const styles = StyleSheet.create({
   },
   lookupButtonText: { color: '#fff', fontWeight: '800', fontSize: 13 },
   hint: { fontSize: 12, color: '#64748B', marginTop: -8, marginBottom: 12, marginLeft: 4, lineHeight: 16 },
-  logoPicker: { flexDirection: 'row', alignItems: 'center', minHeight: 88, padding: 12, marginBottom: 16, borderRadius: 16, borderWidth: 1, borderColor: '#DDD6FE', backgroundColor: '#FAF5FF' },
-  logoPreview: { width: 64, height: 64, borderRadius: 16, backgroundColor: '#EDE9FE' },
+  logoPicker: {
+    flexDirection: 'row', alignItems: 'center', minHeight: 104, padding: 12, marginBottom: 16,
+    borderRadius: 16, borderWidth: 1, borderColor: '#DDD6FE', backgroundColor: '#FAF5FF',
+  },
+  logoPickerDragOver: { borderColor: Colors.light.accent, backgroundColor: '#EDE9FE' },
+  logoPreviewWrap: {
+    width: 80, height: 80, borderRadius: 18, backgroundColor: '#EDE9FE',
+    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+  },
+  logoPreview: { width: '100%', height: '100%' },
   logoPickerText: { flex: 1, marginLeft: 14 },
   logoPickerTitle: { color: Colors.light.accent, fontWeight: '800', fontSize: 15 },
-  logoPickerHint: { color: '#64748B', fontSize: 12, marginTop: 4 },
+  logoPickerHint: { color: '#64748B', fontSize: 12, marginTop: 4, lineHeight: 16 },
   colorGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   colorOption: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   colorOptionSelected: { borderWidth: 3, borderColor: '#E2E8F0', transform: [{ scale: 1.08 }] },

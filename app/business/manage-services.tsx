@@ -19,11 +19,103 @@ import Colors from '../../constants/Colors';
 import AppSwitch from '../../components/ui/AppSwitch';
 import { useLocale } from '../../contexts/LocaleContext';
 import { useLocation } from '../../contexts/LocationContext';
-import { formatServicePrice } from '../../utils/currency';
+import { formatServicePrice, type AppCurrency } from '../../utils/currency';
 import { goBackToApp } from '../../utils/navigation';
 import { formatApiError, notify } from '../../utils/notify';
 import { localizedName } from '../../utils/localized';
 import { buildServiceGroups } from '../../utils/serviceGroups';
+
+type ServiceRowProps = {
+  item: Service;
+  drag: () => void;
+  isActive: boolean;
+  inactive: boolean;
+  toggling: boolean;
+  currency: AppCurrency;
+  language: string;
+  individuallyPricedLabel: string;
+  activeLabel: string;
+  inactiveLabel: string;
+  onToggle: (value: boolean) => void;
+  onEdit: () => void;
+  onDelete: () => void;
+};
+
+function ServiceRow({
+  item,
+  drag,
+  isActive,
+  inactive,
+  toggling,
+  currency,
+  language,
+  individuallyPricedLabel,
+  activeLabel,
+  inactiveLabel,
+  onToggle,
+  onEdit,
+  onDelete,
+}: ServiceRowProps) {
+  const [imageBroken, setImageBroken] = useState(false);
+  const showImage = Boolean(item.image_url) && !imageBroken;
+
+  return (
+    <ScaleDecorator>
+      <View style={[styles.serviceItem, inactive && styles.serviceItemInactive, isActive && styles.serviceItemDragging]}>
+        <TouchableOpacity
+          onLongPress={drag}
+          onPressIn={Platform.OS === 'web' ? drag : undefined}
+          delayLongPress={Platform.OS === 'web' ? 1 : 140}
+          style={styles.dragHandle}
+          hitSlop={10}
+          accessibilityLabel="Zmień kolejność"
+        >
+          <Ionicons name="menu" size={22} color={isActive ? Colors.light.accent : '#64748B'} />
+        </TouchableOpacity>
+        <View style={styles.serviceIconContainer}>
+          {showImage ? (
+            <Image
+              source={{ uri: item.image_url }}
+              style={styles.serviceImage}
+              contentFit="cover"
+              onError={() => setImageBroken(true)}
+            />
+          ) : (
+            <Ionicons name="cut-outline" size={20} color={Colors.light.accent} />
+          )}
+        </View>
+        <View style={styles.serviceInfo}>
+          <Text style={[styles.serviceName, inactive && styles.inactiveText]}>
+            {localizedName(item, language)}
+          </Text>
+          <View style={styles.serviceMeta}>
+            <Text style={styles.serviceMetaText}>{item.duration_minutes} min</Text>
+            <View style={styles.dot} />
+            <Text style={styles.serviceMetaTextBold}>
+              {formatServicePrice(item, currency, { individuallyPricedLabel })}
+            </Text>
+          </View>
+          <View style={styles.activeRow}>
+            <Text style={styles.activeLabel}>{inactive ? inactiveLabel : activeLabel}</Text>
+            <AppSwitch
+              value={!inactive}
+              disabled={toggling}
+              onValueChange={onToggle}
+              trackColor={{ false: '#CBD5E1', true: '#C4B5FD' }}
+              thumbColor={!inactive ? Colors.light.accent : '#f4f3f4'}
+            />
+          </View>
+        </View>
+        <TouchableOpacity style={styles.editBtn} onPress={onEdit}>
+          <Ionicons name="create-outline" size={20} color={Colors.light.accent} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.deleteBtn} onPress={onDelete}>
+          <Ionicons name="trash-outline" size={20} color="#EF4444" />
+        </TouchableOpacity>
+      </View>
+    </ScaleDecorator>
+  );
+}
 
 export default function ManageServicesScreen() {
   const { activeLocation } = useLocation();
@@ -145,62 +237,25 @@ export default function ManageServicesScreen() {
     void persistOrder(nextFlat.map((item, index) => ({ ...item, sort_order: index })));
   };
 
-  const renderService = ({ item, drag, isActive }: RenderItemParams<Service>) => {
-    const inactive = item.is_active === false;
-    return (
-      <ScaleDecorator>
-        <View style={[styles.serviceItem, inactive && styles.serviceItemInactive, isActive && styles.serviceItemDragging]}>
-          <TouchableOpacity onLongPress={drag} delayLongPress={100} style={styles.dragHandle} hitSlop={8}>
-            <Ionicons name="menu" size={20} color="#94A3B8" />
-          </TouchableOpacity>
-          <View style={styles.serviceIconContainer}>
-            {item.image_url ? (
-              <Image source={{ uri: item.image_url }} style={styles.serviceImage} contentFit="cover" />
-            ) : (
-              <Ionicons name="cut-outline" size={20} color={Colors.light.accent} />
-            )}
-          </View>
-          <View style={styles.serviceInfo}>
-            <Text style={[styles.serviceName, inactive && styles.inactiveText]}>
-              {localizedName(item, language)}
-            </Text>
-            <View style={styles.serviceMeta}>
-              <Text style={styles.serviceMetaText}>{item.duration_minutes} min</Text>
-              <View style={styles.dot} />
-              <Text style={styles.serviceMetaTextBold}>
-                {formatServicePrice(item, currency, {
-                  individuallyPricedLabel: t('booking.individuallyPriced'),
-                })}
-              </Text>
-            </View>
-            <View style={styles.activeRow}>
-              <Text style={styles.activeLabel}>
-                {inactive ? t('services.inactive') : t('services.active')}
-              </Text>
-              <AppSwitch
-                value={!inactive}
-                disabled={togglingId === String(item.id)}
-                onValueChange={(value) => void toggleActive(item, value)}
-                trackColor={{ false: '#CBD5E1', true: '#C4B5FD' }}
-                thumbColor={!inactive ? Colors.light.accent : '#f4f3f4'}
-              />
-            </View>
-          </View>
-          <TouchableOpacity
-            style={styles.editBtn}
-            onPress={() =>
-              router.push({ pathname: '/business/service-form', params: { id: String(item.id) } } as any)
-            }
-          >
-            <Ionicons name="create-outline" size={20} color={Colors.light.accent} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.deleteBtn} onPress={() => confirmDelete(item.id)}>
-            <Ionicons name="trash-outline" size={20} color="#EF4444" />
-          </TouchableOpacity>
-        </View>
-      </ScaleDecorator>
-    );
-  };
+  const renderService = ({ item, drag, isActive }: RenderItemParams<Service>) => (
+    <ServiceRow
+      item={item}
+      drag={drag}
+      isActive={isActive}
+      inactive={item.is_active === false}
+      toggling={togglingId === String(item.id)}
+      currency={currency}
+      language={language}
+      individuallyPricedLabel={t('booking.individuallyPriced')}
+      activeLabel={t('services.active')}
+      inactiveLabel={t('services.inactive')}
+      onToggle={(value) => void toggleActive(item, value)}
+      onEdit={() =>
+        router.push({ pathname: '/business/service-form', params: { id: String(item.id) } } as any)
+      }
+      onDelete={() => confirmDelete(item.id)}
+    />
+  );
 
   return (
     <GestureHandlerRootView style={styles.container}>
@@ -242,7 +297,11 @@ export default function ManageServicesScreen() {
         ) : (
           <>
             <Text style={styles.dragHint}>
-              {savingOrder ? 'Zapisywanie kolejności…' : t('services.dragHint')}
+              {savingOrder
+                ? 'Zapisywanie kolejności…'
+                : Platform.OS === 'web'
+                  ? 'Przeciągnij ≡ myszką, żeby zmienić kolejność w kategorii.'
+                  : t('services.dragHint')}
             </Text>
             {serviceGroups.map((group) => {
               const collapsed = Boolean(collapsedCategories[group.id]);
@@ -276,7 +335,7 @@ export default function ManageServicesScreen() {
                         data={group.services}
                         keyExtractor={(item) => String(item.id)}
                         onDragEnd={({ data }) => reorderGroup(group.id, data)}
-                        activationDistance={6}
+                        activationDistance={Platform.OS === 'web' ? 1 : 8}
                         scrollEnabled={false}
                         renderItem={renderService}
                       />
@@ -335,13 +394,14 @@ const styles = StyleSheet.create({
   serviceItemInactive: { opacity: 0.72, backgroundColor: '#F1F5F9' },
   serviceItemDragging: { borderColor: Colors.light.accent, backgroundColor: '#FAF8FF' },
   dragHandle: {
-    width: 32, height: 40, alignItems: 'center', justifyContent: 'center', marginRight: 4,
+    width: 40, height: 48, alignItems: 'center', justifyContent: 'center', marginRight: 2,
+    borderRadius: 10, backgroundColor: '#EEF2FF',
   },
   serviceIconContainer: {
-    width: 44, height: 44, borderRadius: 12, backgroundColor: '#F5F3FF',
-    justifyContent: 'center', alignItems: 'center', marginRight: 12,
+    width: 52, height: 52, borderRadius: 14, backgroundColor: '#F5F3FF',
+    justifyContent: 'center', alignItems: 'center', marginRight: 12, overflow: 'hidden',
   },
-  serviceImage: { width: '100%', height: '100%', borderRadius: 12 },
+  serviceImage: { width: '100%', height: '100%' },
   groupHeader: {
     flexDirection: 'row', alignItems: 'center', gap: 8,
     paddingLeft: 16, paddingRight: 14, paddingVertical: 14,
@@ -363,7 +423,9 @@ const styles = StyleSheet.create({
   serviceMeta: { flexDirection: 'row', alignItems: 'center' },
   serviceMetaText: { color: Colors.light.textSecondary, fontSize: 13, fontWeight: '500' },
   serviceMetaTextBold: { color: Colors.light.text, fontSize: 13, fontWeight: '700' },
-  activeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
+  activeRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, minHeight: 28,
+  },
   activeLabel: { fontSize: 12, fontWeight: '700', color: '#64748B', textTransform: 'uppercase' },
   dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#CBD5E1', marginHorizontal: 8 },
   deleteBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#FEF2F2', justifyContent: 'center', alignItems: 'center' },
