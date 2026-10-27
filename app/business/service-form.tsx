@@ -126,9 +126,10 @@ export default function ServiceFormScreen() {
                 duration: item.duration_minutes ? String(item.duration_minutes) : '',
               };
             });
-          const withVariants = loadedOptions.length > 0;
+          // Need ≥2 options to treat as variants; a lone leftover option stays simple.
+          const withVariants = loadedOptions.length >= 2;
           setPricingMode(withVariants ? 'variants' : 'simple');
-          setOptions(loadedOptions);
+          setOptions(withVariants ? loadedOptions : []);
           if (withVariants) {
             // Variant services have no base price — amounts live on options only.
             setPricePln('');
@@ -136,7 +137,16 @@ export default function ServiceFormScreen() {
             setPromoPricePln('');
             setPromoPriceEur('');
             setPromoUntil('');
+          } else if (
+            dual.pln == null
+            && dual.eur == null
+            && !Boolean(match.price_is_indicative)
+          ) {
+            // Incomplete legacy rows (no price, not marked indicative) — allow edit/save.
+            setPriceIsIndicative(true);
           }
+        } else {
+          notify('Błąd', 'Nie znaleziono tej usługi na liście cennika.');
         }
       }
     } finally {
@@ -151,13 +161,13 @@ export default function ServiceFormScreen() {
   const handlePickImage = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Brak dostępu', 'Zezwól aplikacji na dostęp do zdjęć.');
+      notify('Brak dostępu', 'Zezwól aplikacji na dostęp do zdjęć.');
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
       allowsEditing: true,
-      aspect: [4, 3],
+      aspect: [1, 1],
       quality: 0.85,
     });
     if (!result.canceled) setImageAsset(result.assets[0]);
@@ -226,17 +236,17 @@ export default function ServiceFormScreen() {
 
   const handleSave = async () => {
     if (!name || !duration) {
-      Alert.alert('Brak danych', 'Wypełnij nazwę oraz czas trwania.');
+      notify('Brak danych', 'Wypełnij nazwę oraz czas trwania.');
       return;
     }
     if (!businessSlug) {
-      Alert.alert('Błąd', 'Nie masz przypisanego salonu do tego konta.');
+      notify('Błąd', 'Nie masz przypisanego salonu do tego konta.');
       return;
     }
 
     if (!withVariants) {
       if (!individuallyPriced && !pricePln.trim() && !priceEur.trim()) {
-        Alert.alert('Brak danych', 'Wpisz cenę albo włącz „Wyceniane indywidualnie”.');
+        notify('Brak danych', 'Wpisz cenę albo włącz „Wyceniane indywidualnie”.');
         return;
       }
     }
@@ -247,19 +257,19 @@ export default function ServiceFormScreen() {
     const formattedPromoEur = withVariants || individuallyPriced ? null : parseOptionalAmount(promoPriceEur);
 
     if (formattedPricePln !== null && Number.isNaN(formattedPricePln)) {
-      Alert.alert('Błąd', 'Cena PLN musi być poprawną liczbą.');
+      notify('Błąd', 'Cena PLN musi być poprawną liczbą.');
       return;
     }
     if (formattedPriceEur !== null && Number.isNaN(formattedPriceEur)) {
-      Alert.alert('Błąd', 'Cena EUR musi być poprawną liczbą.');
+      notify('Błąd', 'Cena EUR musi być poprawną liczbą.');
       return;
     }
     if (formattedPromoPln !== null && Number.isNaN(formattedPromoPln)) {
-      Alert.alert('Błąd', 'Cena promocyjna PLN musi być poprawną liczbą.');
+      notify('Błąd', 'Cena promocyjna PLN musi być poprawną liczbą.');
       return;
     }
     if (formattedPromoEur !== null && Number.isNaN(formattedPromoEur)) {
-      Alert.alert('Błąd', 'Cena promocyjna EUR musi być poprawną liczbą.');
+      notify('Błąd', 'Cena promocyjna EUR musi być poprawną liczbą.');
       return;
     }
 
@@ -270,16 +280,16 @@ export default function ServiceFormScreen() {
           continue;
         }
         if (!option.name.trim()) {
-          Alert.alert('Wariant', 'Każdy wariant musi mieć nazwę (np. cała twarz).');
+          notify('Wariant', 'Każdy wariant musi mieć nazwę (np. cała twarz).');
           return;
         }
         const optPln = individuallyPriced ? null : parseOptionalAmount(option.pricePln);
         const optEur = individuallyPriced ? null : parseOptionalAmount(option.priceEur);
-        if (
-          !individuallyPriced
-          && ((optPln == null && optEur == null) || Number.isNaN(optPln as number) || Number.isNaN(optEur as number))
-        ) {
-          Alert.alert('Wariant', `Podaj cenę dla wariantu „${option.name.trim()}”.`);
+        const missingPrice = optPln == null && optEur == null;
+        const invalidPrice = (optPln != null && Number.isNaN(optPln))
+          || (optEur != null && Number.isNaN(optEur));
+        if (!individuallyPriced && (missingPrice || invalidPrice)) {
+          notify('Wariant', `Podaj cenę dla wariantu „${option.name.trim()}”.`);
           return;
         }
         const optDual = individuallyPriced
@@ -289,7 +299,7 @@ export default function ServiceFormScreen() {
           ? parseInt(option.duration, 10)
           : null;
         if (option.duration.trim() && (!optDuration || Number.isNaN(optDuration))) {
-          Alert.alert('Wariant', `Czas trwania wariantu „${option.name.trim()}” jest nieprawidłowy.`);
+          notify('Wariant', `Czas trwania wariantu „${option.name.trim()}” jest nieprawidłowy.`);
           return;
         }
         preparedOptions.push({
@@ -303,7 +313,7 @@ export default function ServiceFormScreen() {
         });
       }
       if (preparedOptions.length < 2) {
-        Alert.alert('Warianty', 'Dodaj co najmniej 2 warianty albo wybierz „Jedna usługa”.');
+        notify('Warianty', 'Dodaj co najmniej 2 warianty albo wybierz „Jedna usługa”.');
         return;
       }
     }
@@ -323,7 +333,7 @@ export default function ServiceFormScreen() {
         promotional_price_amount: formattedPromoPln,
         promotional_price_amount_eur: formattedPromoEur,
         promotion_valid_until: withVariants || individuallyPriced ? null : (promoUntil || null),
-        price_is_indicative: priceIsIndicative,
+        price_is_indicative: individuallyPriced || priceIsIndicative,
         options: preparedOptions,
       };
       if (editingId) {
@@ -331,13 +341,13 @@ export default function ServiceFormScreen() {
       } else {
         await uploadService(businessSlug, serviceData, imageAsset || undefined);
       }
-      const successTitle = 'Sukces';
-      const successMessage = editingId
-        ? 'Zmiany usługi zostały zapisane.'
-        : 'Usługa została dodana do cennika.';
-      notify(successTitle, successMessage, () => {
-        router.replace('/business/manage-services' as any);
-      });
+      notify(
+        'Sukces',
+        editingId ? 'Zmiany usługi zostały zapisane.' : 'Usługa została dodana do cennika.',
+        () => {
+          router.replace('/business/manage-services' as any);
+        },
+      );
     } catch (e: any) {
       notify('Nie udało się zapisać usługi', formatApiError(e));
     } finally {
