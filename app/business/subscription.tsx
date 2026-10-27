@@ -88,18 +88,25 @@ export default function BusinessSubscriptionScreen() {
   const requestVerification = async () => {
     try {
       setRequestingVerify(true);
+      setError(null);
       const res = await apiClient.post('/businesses/organization/verification/', {});
-      setVerification(
+      const nextStatus =
         res.data?.data?.verification_status ||
-          res.data?.verification_status ||
-          'pending'
+        res.data?.verification_status ||
+        'pending';
+      setVerification(nextStatus);
+      notify(
+        'Wniosek wysłany',
+        'Firma trafiła do kolejki weryfikacji Sessly. Status zobaczysz tutaj — po zatwierdzeniu zmieni się na „zatwierdzona”.',
       );
     } catch (e: any) {
-      setError(
+      const message =
         e?.response?.data?.message ||
-          e?.response?.data?.detail ||
-          'Nie udało się wysłać wniosku.'
-      );
+        e?.response?.data?.detail ||
+        e?.response?.data?.error?.message ||
+        'Nie udało się wysłać wniosku.';
+      setError(message);
+      notify('Weryfikacja', message);
     } finally {
       setRequestingVerify(false);
     }
@@ -189,6 +196,10 @@ export default function BusinessSubscriptionScreen() {
                   ? 'oczekuje na przegląd'
                   : 'brak danych'}
           </Text>
+          <Text style={styles.note}>
+            Po wysłaniu zespół Sessly sprawdza dane firmy (m.in. NIP) w panelu admina.
+            Status zmienia się tutaj po decyzji — nic więcej nie musisz robić.
+          </Text>
           {verification !== 'approved' ? (
             <TouchableOpacity
               style={styles.verifyBtn}
@@ -196,7 +207,11 @@ export default function BusinessSubscriptionScreen() {
               disabled={requestingVerify}
             >
               <Text style={styles.verifyBtnText}>
-                {requestingVerify ? 'Wysyłanie…' : 'Wyślij do weryfikacji'}
+                {requestingVerify
+                  ? 'Wysyłanie…'
+                  : verification === 'pending'
+                    ? 'Wyślij ponownie do weryfikacji'
+                    : 'Wyślij do weryfikacji'}
               </Text>
             </TouchableOpacity>
           ) : null}

@@ -15,7 +15,7 @@ import Colors from '../../constants/Colors';
 import { getAvailability } from '../../api/appointments';
 import { useLocale } from '../../contexts/LocaleContext';
 import type { Service, Business } from '../../types/api';
-import { formatServicePrice } from '../../utils/currency';
+import { formatServicePrice, isIndividuallyPriced } from '../../utils/currency';
 import { localizedName } from '../../utils/localized';
 
 // Konfiguracja języka polskiego dla kalendarza
@@ -154,12 +154,16 @@ const BookingModal: React.FC<BookingModalProps> = ({
               <View style={styles.metaItem}>
                 <Ionicons name="cash-outline" size={16} color="#666" />
                 <Text style={styles.metaText}>
-                  {formatServicePrice(service, currency)}
-                  {service.price_is_indicative ? '*' : ''}
+                  {formatServicePrice(service, currency, {
+                    individuallyPricedLabel: t('booking.individuallyPriced'),
+                  })}
+                  {service.price_is_indicative && !isIndividuallyPriced(service) ? '*' : ''}
                 </Text>
               </View>
             </View>
-            {service.price_is_indicative ? (
+            {isIndividuallyPriced(service) ? (
+              <Text style={styles.indicativeNote}>{t('booking.individuallyPricedNote')}</Text>
+            ) : service.price_is_indicative ? (
               <Text style={styles.indicativeNote}>{t('booking.indicativePriceNote')}</Text>
             ) : null}
           </View>

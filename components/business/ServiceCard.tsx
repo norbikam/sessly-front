@@ -15,7 +15,9 @@ interface ServiceCardProps {
 export default function ServiceCard({ service, onBookClick }: ServiceCardProps) {
   const { currency, language, t } = useLocale();
   const duration = service.duration_minutes;
-  const price = formatServicePrice(service, currency);
+  const price = formatServicePrice(service, currency, {
+    individuallyPricedLabel: t('booking.individuallyPriced'),
+  });
 
   return (
     <View style={styles.serviceCard}>

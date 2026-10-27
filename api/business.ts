@@ -157,7 +157,7 @@ export const addService = async (
 
 export type ServiceWritePayload = {
   name?: string;
-  price_amount?: number;
+  price_amount?: number | null;
   price_amount_eur?: number | null;
   duration_minutes?: number;
   description?: string | null;
@@ -178,11 +178,24 @@ export type ServiceWritePayload = {
   }>;
 };
 
+const NULLABLE_SERVICE_FIELDS = new Set([
+  'price_amount',
+  'price_amount_eur',
+  'promotional_price_amount',
+  'promotional_price_amount_eur',
+  'promotion_valid_until',
+  'category_id',
+]);
+
 const appendServiceFields = (form: FormData, data: ServiceWritePayload) => {
   Object.entries(data).forEach(([key, value]) => {
-    if (value === undefined || value === null) return;
+    if (value === undefined) return;
     if (key === 'options') {
-      form.append('options', JSON.stringify(value));
+      form.append('options', JSON.stringify(value ?? []));
+      return;
+    }
+    if (value === null) {
+      if (NULLABLE_SERVICE_FIELDS.has(key)) form.append(key, '');
       return;
     }
     if (value === '') return;

@@ -80,14 +80,29 @@ export function formatMoney(
 }
 
 type PricedWithOptions = Priced & {
+  price_is_indicative?: boolean;
   options?: Array<Priced & { is_active?: boolean }> | null;
 };
+
+/** True when salon marks price as set only after consultation (no amount shown). */
+export function isIndividuallyPriced(service: PricedWithOptions | null | undefined): boolean {
+  if (!service?.price_is_indicative) return false;
+  const activeOptions = (service.options || []).filter((item) => item.is_active !== false);
+  const optionHasPrice = activeOptions.some(
+    (item) => getServicePrice(item, 'PLN') != null || getServicePrice(item, 'EUR') != null,
+  );
+  if (optionHasPrice) return false;
+  return getServicePrice(service, 'PLN') == null && getServicePrice(service, 'EUR') == null;
+}
 
 export function formatServicePrice(
   service: PricedWithOptions | null | undefined,
   currency: AppCurrency,
-  options?: { preferPromo?: boolean },
+  options?: { preferPromo?: boolean; individuallyPricedLabel?: string },
 ): string {
+  if (isIndividuallyPriced(service)) {
+    return options?.individuallyPricedLabel || 'Wyceniane indywidualnie';
+  }
   const activeOptions = (service?.options || []).filter((item) => item.is_active !== false);
   if (activeOptions.length > 0) {
     const amounts = activeOptions

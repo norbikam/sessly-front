@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput, Alert,
-  ActivityIndicator, KeyboardAvoidingView, Modal, Platform, ScrollView, Switch,
+  ActivityIndicator, KeyboardAvoidingView, Modal, Platform, ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
@@ -17,6 +17,7 @@ import {
 } from '../../api/business';
 import { Service, ServiceCategory } from '../../types/api';
 import Colors from '../../constants/Colors';
+import AppSwitch from '../../components/ui/AppSwitch';
 import { useLocale } from '../../contexts/LocaleContext';
 import { useLocation } from '../../contexts/LocationContext';
 import { convertCurrency, resolveDualPrices } from '../../utils/currency';
@@ -168,19 +169,48 @@ export default function ServiceFormScreen() {
     );
   };
 
+  const hasEnteredPrice = Boolean(pricePln.trim() || priceEur.trim());
+  const individuallyPriced = priceIsIndicative && !hasEnteredPrice;
+  const showPriceFields = !individuallyPriced;
+
+  const handleToggleIndicative = (value: boolean) => {
+    setPriceIsIndicative(value);
+    if (value && !pricePln.trim() && !priceEur.trim()) {
+      setPromoPricePln('');
+      setPromoPriceEur('');
+      setPromoUntil('');
+    }
+  };
+
+  const enableIndividuallyPriced = () => {
+    setPricePln('');
+    setPriceEur('');
+    setPromoPricePln('');
+    setPromoPriceEur('');
+    setPromoUntil('');
+    setOptions((current) =>
+      current.map((option) => ({ ...option, pricePln: '', priceEur: '' })),
+    );
+    setPriceIsIndicative(true);
+  };
+
   const handleSave = async () => {
-    if (!name || !duration || (!pricePln.trim() && !priceEur.trim())) {
-      Alert.alert('Brak danych', 'Wypełnij nazwę, czas trwania oraz cenę w PLN lub EUR.');
+    if (!name || !duration) {
+      Alert.alert('Brak danych', 'Wypełnij nazwę oraz czas trwania.');
+      return;
+    }
+    if (!individuallyPriced && !pricePln.trim() && !priceEur.trim()) {
+      Alert.alert('Brak danych', 'Wpisz cenę albo włącz „Wyceniane indywidualnie”.');
       return;
     }
     if (!businessSlug) {
       Alert.alert('Błąd', 'Nie masz przypisanego salonu do tego konta.');
       return;
     }
-    const formattedPricePln = parseOptionalAmount(pricePln);
-    const formattedPriceEur = parseOptionalAmount(priceEur);
-    const formattedPromoPln = parseOptionalAmount(promoPricePln);
-    const formattedPromoEur = parseOptionalAmount(promoPriceEur);
+    const formattedPricePln = individuallyPriced ? null : parseOptionalAmount(pricePln);
+    const formattedPriceEur = individuallyPriced ? null : parseOptionalAmount(priceEur);
+    const formattedPromoPln = individuallyPriced ? null : parseOptionalAmount(promoPricePln);
+    const formattedPromoEur = individuallyPriced ? null : parseOptionalAmount(promoPriceEur);
 
     if (formattedPricePln !== null && Number.isNaN(formattedPricePln)) {
       Alert.alert('Błąd', 'Cena PLN musi być poprawną liczbą.');
@@ -201,18 +231,25 @@ export default function ServiceFormScreen() {
 
     const preparedOptions = [];
     for (const [index, option] of options.entries()) {
-      if (!option.name.trim() && !option.pricePln.trim() && !option.priceEur.trim()) continue;
+      if (!option.name.trim() && !option.pricePln.trim() && !option.priceEur.trim() && !option.duration.trim()) {
+        continue;
+      }
       if (!option.name.trim()) {
         Alert.alert('Wariant', 'Każdy wariant musi mieć nazwę (np. cała twarz).');
         return;
       }
-      const optPln = parseOptionalAmount(option.pricePln);
-      const optEur = parseOptionalAmount(option.priceEur);
-      if ((optPln == null && optEur == null) || Number.isNaN(optPln) || Number.isNaN(optEur)) {
+      const optPln = individuallyPriced ? null : parseOptionalAmount(option.pricePln);
+      const optEur = individuallyPriced ? null : parseOptionalAmount(option.priceEur);
+      if (
+        !individuallyPriced
+        && ((optPln == null && optEur == null) || Number.isNaN(optPln as number) || Number.isNaN(optEur as number))
+      ) {
         Alert.alert('Wariant', `Podaj cenę dla wariantu „${option.name.trim()}”.`);
         return;
       }
-      const optDual = resolveDualPrices(optPln, optEur);
+      const optDual = individuallyPriced
+        ? { pln: null, eur: null }
+        : resolveDualPrices(optPln, optEur);
       const optDuration = option.duration.trim()
         ? parseInt(option.duration, 10)
         : null;
@@ -231,19 +268,21 @@ export default function ServiceFormScreen() {
       });
     }
 
-    const dual = resolveDualPrices(formattedPricePln, formattedPriceEur);
+    const dual = individuallyPriced
+      ? { pln: null, eur: null }
+      : resolveDualPrices(formattedPricePln, formattedPriceEur);
     try {
       setSubmitting(true);
       const serviceData = {
         name: name.trim(),
         description: description.trim() || '',
-        price_amount: dual.pln as number,
-        price_amount_eur: dual.eur ?? undefined,
+        price_amount: dual.pln,
+        price_amount_eur: dual.eur,
         duration_minutes: parseInt(duration, 10) || 60,
         category_id: selectedCategoryId || null,
         promotional_price_amount: formattedPromoPln,
         promotional_price_amount_eur: formattedPromoEur,
-        promotion_valid_until: promoUntil || null,
+        promotion_valid_until: individuallyPriced ? null : (promoUntil || null),
         price_is_indicative: priceIsIndicative,
         options: preparedOptions,
       };
@@ -332,48 +371,67 @@ export default function ServiceFormScreen() {
               )}
             </TouchableOpacity>
 
-            <View style={styles.row}>
-              <View style={[styles.inputWrapper, { flex: 1 }]}>
-                <Text style={styles.inputLabel}>{t('service.form.pricePln')}</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="0"
-                  keyboardType="numeric"
-                  value={pricePln}
-                  onChangeText={setPricePln}
-                  onBlur={fillMissingFromPln}
-                />
-              </View>
-              <View style={[styles.inputWrapper, { flex: 1 }]}>
-                <Text style={styles.inputLabel}>{t('service.form.priceEur')}</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="0"
-                  keyboardType="numeric"
-                  value={priceEur}
-                  onChangeText={setPriceEur}
-                  onBlur={fillMissingFromEur}
-                />
-              </View>
-            </View>
-            <Text style={styles.hint}>
-              {options.length
-                ? t('service.form.priceHintWithOptions')
-                : t('service.form.priceHint')}
-            </Text>
-
             <View style={styles.switchRow}>
               <View style={{ flex: 1, paddingRight: 12 }}>
-                <Text style={styles.switchTitle}>{t('service.form.indicativePrice')}</Text>
-                <Text style={styles.switchHint}>{t('service.form.indicativePriceHint')}</Text>
+                <Text style={styles.switchTitle}>
+                  {hasEnteredPrice
+                    ? t('service.form.indicativePrice')
+                    : t('service.form.individuallyPriced')}
+                </Text>
+                <Text style={styles.switchHint}>
+                  {hasEnteredPrice
+                    ? t('service.form.indicativePriceHint')
+                    : t('service.form.individuallyPricedHint')}
+                </Text>
+                {hasEnteredPrice ? (
+                  <TouchableOpacity onPress={enableIndividuallyPriced} style={styles.individualLink}>
+                    <Text style={styles.individualLinkText}>
+                      {t('service.form.switchToIndividuallyPriced')}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
-              <Switch
+              <AppSwitch
                 value={priceIsIndicative}
-                onValueChange={setPriceIsIndicative}
+                onValueChange={handleToggleIndicative}
                 trackColor={{ false: '#CBD5E1', true: '#C4B5FD' }}
                 thumbColor={priceIsIndicative ? Colors.light.accent : '#f4f3f4'}
               />
             </View>
+
+            {showPriceFields ? (
+              <>
+                <View style={styles.row}>
+                  <View style={[styles.inputWrapper, { flex: 1 }]}>
+                    <Text style={styles.inputLabel}>{t('service.form.pricePln')}</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="0"
+                      keyboardType="numeric"
+                      value={pricePln}
+                      onChangeText={setPricePln}
+                      onBlur={fillMissingFromPln}
+                    />
+                  </View>
+                  <View style={[styles.inputWrapper, { flex: 1 }]}>
+                    <Text style={styles.inputLabel}>{t('service.form.priceEur')}</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="0"
+                      keyboardType="numeric"
+                      value={priceEur}
+                      onChangeText={setPriceEur}
+                      onBlur={fillMissingFromEur}
+                    />
+                  </View>
+                </View>
+                <Text style={styles.hint}>
+                  {options.length
+                    ? t('service.form.priceHintWithOptions')
+                    : t('service.form.priceHint')}
+                </Text>
+              </>
+            ) : null}
 
             <View style={styles.inputWrapper}>
               <Text style={styles.inputLabel}>{t('service.form.duration')}</Text>
@@ -408,38 +466,40 @@ export default function ServiceFormScreen() {
                   value={option.name}
                   onChangeText={(value) => updateOption(option.key, { name: value })}
                 />
-                <View style={[styles.row, { marginTop: 10 }]}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.inputLabel}>{t('service.form.pricePln')}</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="0"
-                      keyboardType="numeric"
-                      value={option.pricePln}
-                      onChangeText={(value) => updateOption(option.key, { pricePln: value })}
-                      onBlur={() => {
-                        const pln = parseOptionalAmount(option.pricePln);
-                        if (pln == null || Number.isNaN(pln) || option.priceEur.trim()) return;
-                        updateOption(option.key, { priceEur: String(convertCurrency(pln, 'PLN', 'EUR')) });
-                      }}
-                    />
+                {showPriceFields ? (
+                  <View style={[styles.row, { marginTop: 10 }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.inputLabel}>{t('service.form.pricePln')}</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="0"
+                        keyboardType="numeric"
+                        value={option.pricePln}
+                        onChangeText={(value) => updateOption(option.key, { pricePln: value })}
+                        onBlur={() => {
+                          const pln = parseOptionalAmount(option.pricePln);
+                          if (pln == null || Number.isNaN(pln) || option.priceEur.trim()) return;
+                          updateOption(option.key, { priceEur: String(convertCurrency(pln, 'PLN', 'EUR')) });
+                        }}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.inputLabel}>{t('service.form.priceEur')}</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="0"
+                        keyboardType="numeric"
+                        value={option.priceEur}
+                        onChangeText={(value) => updateOption(option.key, { priceEur: value })}
+                        onBlur={() => {
+                          const eur = parseOptionalAmount(option.priceEur);
+                          if (eur == null || Number.isNaN(eur) || option.pricePln.trim()) return;
+                          updateOption(option.key, { pricePln: String(convertCurrency(eur, 'EUR', 'PLN')) });
+                        }}
+                      />
+                    </View>
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.inputLabel}>{t('service.form.priceEur')}</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="0"
-                      keyboardType="numeric"
-                      value={option.priceEur}
-                      onChangeText={(value) => updateOption(option.key, { priceEur: value })}
-                      onBlur={() => {
-                        const eur = parseOptionalAmount(option.priceEur);
-                        if (eur == null || Number.isNaN(eur) || option.pricePln.trim()) return;
-                        updateOption(option.key, { pricePln: String(convertCurrency(eur, 'EUR', 'PLN')) });
-                      }}
-                    />
-                  </View>
-                </View>
+                ) : null}
                 <View style={[styles.inputWrapper, { marginTop: 10, marginBottom: 0 }]}>
                   <Text style={styles.inputLabel}>{t('service.form.optionDuration')}</Text>
                   <TextInput
@@ -453,26 +513,30 @@ export default function ServiceFormScreen() {
               </View>
             ))}
 
-            <View style={styles.row}>
-              <View style={[styles.inputWrapper, { flex: 1 }]}>
-                <Text style={styles.inputLabel}>{t('service.form.promo')}</Text>
-                <TextInput style={styles.input} placeholder="Opcjonalnie" keyboardType="numeric" value={promoPricePln} onChangeText={setPromoPricePln} />
-              </View>
-              <View style={[styles.inputWrapper, { flex: 1 }]}>
-                <Text style={styles.inputLabel}>{t('service.form.promoEur')}</Text>
-                <TextInput style={styles.input} placeholder="Opcjonalnie" keyboardType="numeric" value={promoPriceEur} onChangeText={setPromoPriceEur} />
-              </View>
-            </View>
+            {showPriceFields ? (
+              <>
+                <View style={styles.row}>
+                  <View style={[styles.inputWrapper, { flex: 1 }]}>
+                    <Text style={styles.inputLabel}>{t('service.form.promo')}</Text>
+                    <TextInput style={styles.input} placeholder="Opcjonalnie" keyboardType="numeric" value={promoPricePln} onChangeText={setPromoPricePln} />
+                  </View>
+                  <View style={[styles.inputWrapper, { flex: 1 }]}>
+                    <Text style={styles.inputLabel}>{t('service.form.promoEur')}</Text>
+                    <TextInput style={styles.input} placeholder="Opcjonalnie" keyboardType="numeric" value={promoPriceEur} onChangeText={setPromoPriceEur} />
+                  </View>
+                </View>
 
-            <View style={styles.inputWrapper}>
-              <Text style={styles.inputLabel}>{t('service.form.promoUntil')}</Text>
-              <TouchableOpacity style={[styles.input, styles.dateButton]} onPress={() => setShowPromoCalendar(true)}>
-                <Text style={promoUntil ? styles.dateValue : styles.datePlaceholder}>
-                  {promoUntil ? new Date(`${promoUntil}T12:00:00`).toLocaleDateString('pl-PL') : t('service.form.pickDate')}
-                </Text>
-                <Ionicons name="calendar-outline" size={20} color={Colors.light.accent} />
-              </TouchableOpacity>
-            </View>
+                <View style={styles.inputWrapper}>
+                  <Text style={styles.inputLabel}>{t('service.form.promoUntil')}</Text>
+                  <TouchableOpacity style={[styles.input, styles.dateButton]} onPress={() => setShowPromoCalendar(true)}>
+                    <Text style={promoUntil ? styles.dateValue : styles.datePlaceholder}>
+                      {promoUntil ? new Date(`${promoUntil}T12:00:00`).toLocaleDateString('pl-PL') : t('service.form.pickDate')}
+                    </Text>
+                    <Ionicons name="calendar-outline" size={20} color={Colors.light.accent} />
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : null}
 
             <TouchableOpacity style={[styles.addBtn, submitting && styles.addBtnDisabled]} onPress={handleSave} disabled={submitting}>
               {submitting ? (
@@ -630,6 +694,8 @@ const styles = StyleSheet.create({
   },
   switchTitle: { fontSize: 14, fontWeight: '800', color: Colors.light.text, marginBottom: 4 },
   switchHint: { fontSize: 12, color: '#64748B', lineHeight: 17 },
+  individualLink: { marginTop: 8 },
+  individualLinkText: { fontSize: 12, fontWeight: '800', color: Colors.light.accent },
   optionsHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 8, marginBottom: 8 },
   addOptionBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.light.accent,

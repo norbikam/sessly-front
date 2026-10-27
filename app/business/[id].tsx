@@ -18,7 +18,7 @@ import { useLocale } from '../../contexts/LocaleContext';
 import BookingModal from '../../components/booking/BookingModal';
 import OpeningHoursCard from '../../components/business/OpeningHoursCard';
 import { Business, Review, Service, ServiceOption } from '../../types/api';
-import { formatMoney, formatServicePrice, getServicePrice } from '../../utils/currency';
+import { formatMoney, formatServicePrice, getServicePrice, isIndividuallyPriced } from '../../utils/currency';
 import { localizedDescription, localizedName } from '../../utils/localized';
 import { notify } from '../../utils/notify';
 import { getFollowing, toggleFollowing } from '../../api/following';
@@ -80,7 +80,8 @@ export default function BusinessDetailScreen() {
   );
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [optionPickerService, setOptionPickerService] = useState<Service | null>(null);
-  const canBook = user?.role === 'customer';
+  // Owners/staff manage the salon — everyone else (customers, platform admin, guests) can book.
+  const canBook = user?.role !== 'business_owner' && user?.role !== 'staff';
 
   useEffect(() => {
     const loadBusiness = async () => {
@@ -167,7 +168,7 @@ export default function BusinessDetailScreen() {
 
   const handleBook = (service: Service) => {
     if (!canBook) {
-      notify('Konto firmowe', 'Właściciel i pracownik nie mogą rezerwować wizyt.');
+      notify('Konto firmowe', 'Zaloguj się na konto klienta, żeby zarezerwować wizytę.');
       return;
     }
     if (!isLoggedIn) {
@@ -443,10 +444,12 @@ export default function BusinessDetailScreen() {
                   ) : null}
                   <View style={styles.serviceMeta}>
                     <Text style={styles.servicePrice}>
-                      {formatServicePrice(service, currency)}
-                      {service.price_is_indicative ? '*' : ''}
+                      {formatServicePrice(service, currency, {
+                        individuallyPricedLabel: t('booking.individuallyPriced'),
+                      })}
+                      {service.price_is_indicative && !isIndividuallyPriced(service) ? '*' : ''}
                     </Text>
-                    {promotionActive && !options.length ? (
+                    {promotionActive && !options.length && !isIndividuallyPriced(service) ? (
                       <Text style={styles.regularPrice}>
                         {formatMoney(getServicePrice(service, currency, { preferPromo: false }), currency)}
                       </Text>
@@ -454,7 +457,9 @@ export default function BusinessDetailScreen() {
                     <View style={styles.dot} />
                     <Text style={styles.serviceDuration}>{(service as any).duration_minutes || 60} min</Text>
                   </View>
-                  {service.price_is_indicative ? (
+                  {isIndividuallyPriced(service) ? (
+                    <Text style={styles.indicativeNote}>{t('booking.individuallyPricedNote')}</Text>
+                  ) : service.price_is_indicative ? (
                     <Text style={styles.indicativeNote}>{t('booking.indicativePriceNote')}</Text>
                   ) : null}
                 </View>
@@ -588,7 +593,11 @@ export default function BusinessDetailScreen() {
                     <View style={{ flex: 1 }}>
                       <Text style={styles.optionName}>{option.localized_name || option.name}</Text>
                       <Text style={styles.optionMeta}>
-                        {formatMoney(getServicePrice(option, currency), currency)}
+                        {isIndividuallyPriced(optionPickerService)
+                          || (getServicePrice(option, currency) == null
+                            && optionPickerService.price_is_indicative)
+                          ? t('booking.individuallyPriced')
+                          : formatMoney(getServicePrice(option, currency), currency)}
                         {' · '}
                         {option.effective_duration_minutes
                           || option.duration_minutes

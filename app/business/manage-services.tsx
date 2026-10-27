@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, ScrollView, Switch, Alert,
+  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, ScrollView, Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
@@ -8,6 +8,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { deleteService, getMyServices, getServiceCategories, updateService } from '../../api/business';
 import { Service, ServiceCategory } from '../../types/api';
 import Colors from '../../constants/Colors';
+import AppSwitch from '../../components/ui/AppSwitch';
 import { useLocale } from '../../contexts/LocaleContext';
 import { useLocation } from '../../contexts/LocationContext';
 import { formatServicePrice } from '../../utils/currency';
@@ -175,14 +176,16 @@ export default function ManageServicesScreen() {
                         <Text style={styles.serviceMetaText}>{item.duration_minutes} min</Text>
                         <View style={styles.dot} />
                         <Text style={styles.serviceMetaTextBold}>
-                          {formatServicePrice(item, currency)}
+                          {formatServicePrice(item, currency, {
+                            individuallyPricedLabel: t('booking.individuallyPriced'),
+                          })}
                         </Text>
                       </View>
                       <View style={styles.activeRow}>
                         <Text style={styles.activeLabel}>
                           {inactive ? t('services.inactive') : t('services.active')}
                         </Text>
-                        <Switch
+                        <AppSwitch
                           value={!inactive}
                           disabled={togglingId === String(item.id)}
                           onValueChange={(value) => void toggleActive(item, value)}
