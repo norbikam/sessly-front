@@ -177,6 +177,7 @@ export interface BusinessService {
   color?: string;
   image_url?: string;
   options?: ServiceOption[];
+  sort_order?: number;
 }
 
 export interface ServiceCategory {

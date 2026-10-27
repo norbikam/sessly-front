@@ -23,6 +23,7 @@ import { formatMoney, formatServicePrice, getServicePrice, isIndividuallyPriced 
 import { localizedDescription, localizedName } from '../../utils/localized';
 import { notify } from '../../utils/notify';
 import { getFollowing, toggleFollowing } from '../../api/following';
+import { buildServiceGroups, filterServiceGroups } from '../../utils/serviceGroups';
 
 type CartItem = { service: Service; option?: ServiceOption };
 
@@ -81,6 +82,8 @@ export default function BusinessDetailScreen() {
   );
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [optionPickerService, setOptionPickerService] = useState<Service | null>(null);
+  const [serviceQuery, setServiceQuery] = useState('');
+  const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
   // Owners/staff manage the salon — everyone else (customers, platform admin, guests) can book.
   const canBook = user?.role !== 'business_owner' && user?.role !== 'staff';
 
@@ -286,7 +289,25 @@ export default function BusinessDetailScreen() {
     );
   }
 
-  const services = (business as any).services || [];
+  const services = ((business as any).services || []) as Service[];
+  const serviceGroups = useMemo(() => {
+    const categories = Array.from(
+      new Map(
+        services
+          .map((service) => service.category)
+          .filter(Boolean)
+          .map((category) => [String(category!.id), category!]),
+      ).values(),
+    );
+    return filterServiceGroups(
+      buildServiceGroups(services, categories, t('booking.uncategorized')),
+      serviceQuery,
+    );
+  }, [services, serviceQuery, t]);
+
+  const toggleCategory = (id: string) => {
+    setCollapsedCategories((current) => ({ ...current, [id]: !current[id] }));
+  };
   const hours = (business as any).opening_hours || [];
   const address = `${business.address_line1 || ''}, ${(business as any).city || ''}`.replace(/^,\s*/, '').replace(/,\s*$/, '');
   const businessId = String(business.id);
@@ -411,69 +432,127 @@ export default function BusinessDetailScreen() {
         {/* Sekcja Usług */}
         <View style={[styles.servicesSection, isWeb && styles.webCard]}>
           <Text style={styles.sectionTitle}>{t('booking.selectService')}</Text>
-          
+
+          {services.length > 0 ? (
+            <View style={styles.serviceSearchWrap}>
+              <Ionicons name="search-outline" size={18} color="#94A3B8" />
+              <TextInput
+                style={styles.serviceSearchInput}
+                value={serviceQuery}
+                onChangeText={setServiceQuery}
+                placeholder={t('booking.searchServices')}
+                placeholderTextColor="#94A3B8"
+                autoCorrect={false}
+                autoCapitalize="none"
+                clearButtonMode="while-editing"
+              />
+              {serviceQuery ? (
+                <TouchableOpacity onPress={() => setServiceQuery('')} hitSlop={8}>
+                  <Ionicons name="close-circle" size={18} color="#94A3B8" />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          ) : null}
+
           {services.length === 0 ? (
             <View style={styles.emptyServices}>
               <Ionicons name="cut-outline" size={40} color="#CBD5E1" />
               <Text style={styles.descText}>{t('booking.noServices')}</Text>
             </View>
+          ) : serviceGroups.length === 0 ? (
+            <View style={styles.emptyServices}>
+              <Ionicons name="search-outline" size={40} color="#CBD5E1" />
+              <Text style={styles.descText}>{t('booking.noSearchResults')}</Text>
+            </View>
           ) : (
-            services.map((service: Service) => {
-              const options = activeServiceOptions(service);
-              const inCart = cart.some((item) => String(item.service.id) === String(service.id));
-              const promotionActive = Boolean(
-                service.promotional_price_amount
-                && (!service.promotion_valid_until || new Date(service.promotion_valid_until) >= new Date())
-              );
+            serviceGroups.map((group) => {
+              const collapsed = Boolean(collapsedCategories[group.id]);
               return (
-              <TouchableOpacity 
-                key={service.id} 
-                style={[styles.serviceItem, inCart && styles.serviceItemActive]}
-                onPress={() => handleBook(service)}
-                activeOpacity={0.7}
-                disabled={!canBook}
-              >
-                <View style={styles.serviceDetails}>
-                  <Text style={styles.serviceName}>{localizedName(service, language)}</Text>
-                  {localizedDescription(service, language) ? (
-                    <Text style={styles.serviceDesc} numberOfLines={2}>{localizedDescription(service, language)}</Text>
-                  ) : null}
-                  {options.length ? (
-                    <Text style={styles.serviceDesc} numberOfLines={1}>
-                      {options.map((item) => item.localized_name || item.name).join(' · ')}
-                    </Text>
-                  ) : null}
-                  <View style={styles.serviceMeta}>
-                    <Text style={styles.servicePrice}>
-                      {formatServicePrice(service, currency, {
-                        individuallyPricedLabel: t('booking.individuallyPriced'),
-                      })}
-                      {service.price_is_indicative && !isIndividuallyPriced(service) ? '*' : ''}
-                    </Text>
-                    {promotionActive && !options.length && !isIndividuallyPriced(service) ? (
-                      <Text style={styles.regularPrice}>
-                        {formatMoney(getServicePrice(service, currency, { preferPromo: false }), currency)}
-                      </Text>
-                    ) : null}
-                    <View style={styles.dot} />
-                    <Text style={styles.serviceDuration}>{(service as any).duration_minutes || 60} min</Text>
-                  </View>
-                  {isIndividuallyPriced(service) ? (
-                    <Text style={styles.indicativeNote}>{t('booking.individuallyPricedNote')}</Text>
-                  ) : service.price_is_indicative ? (
-                    <Text style={styles.indicativeNote}>{t('booking.indicativePriceNote')}</Text>
-                  ) : null}
+                <View key={group.id} style={styles.serviceCategoryBlock}>
+                  <TouchableOpacity
+                    style={styles.serviceCategoryHeader}
+                    onPress={() => toggleCategory(group.id)}
+                    activeOpacity={0.75}
+                  >
+                    <View style={[styles.serviceCategoryDot, { backgroundColor: group.color }]} />
+                    <Text style={styles.serviceCategoryTitle}>{group.name}</Text>
+                    <Text style={styles.serviceCategoryCount}>{group.services.length}</Text>
+                    <Ionicons
+                      name={collapsed ? 'chevron-down' : 'chevron-up'}
+                      size={18}
+                      color="#64748B"
+                    />
+                  </TouchableOpacity>
+
+                  {!collapsed
+                    ? group.services.map((service: Service) => {
+                        const options = activeServiceOptions(service);
+                        const inCart = cart.some((item) => String(item.service.id) === String(service.id));
+                        const promotionActive = Boolean(
+                          service.promotional_price_amount
+                          && (!service.promotion_valid_until || new Date(service.promotion_valid_until) >= new Date())
+                        );
+                        return (
+                          <TouchableOpacity
+                            key={service.id}
+                            style={[styles.serviceItem, inCart && styles.serviceItemActive]}
+                            onPress={() => handleBook(service)}
+                            activeOpacity={0.7}
+                            disabled={!canBook}
+                          >
+                            <View style={styles.serviceDetails}>
+                              <Text style={styles.serviceName}>{localizedName(service, language)}</Text>
+                              {localizedDescription(service, language) ? (
+                                <Text style={styles.serviceDesc} numberOfLines={2}>
+                                  {localizedDescription(service, language)}
+                                </Text>
+                              ) : null}
+                              {options.length ? (
+                                <Text style={styles.serviceDesc} numberOfLines={1}>
+                                  {options.map((item) => item.localized_name || item.name).join(' · ')}
+                                </Text>
+                              ) : null}
+                              <View style={styles.serviceMeta}>
+                                <Text style={styles.servicePrice}>
+                                  {formatServicePrice(service, currency, {
+                                    individuallyPricedLabel: t('booking.individuallyPriced'),
+                                  })}
+                                  {service.price_is_indicative && !isIndividuallyPriced(service) ? '*' : ''}
+                                </Text>
+                                {promotionActive && !options.length && !isIndividuallyPriced(service) ? (
+                                  <Text style={styles.regularPrice}>
+                                    {formatMoney(getServicePrice(service, currency, { preferPromo: false }), currency)}
+                                  </Text>
+                                ) : null}
+                                <View style={styles.dot} />
+                                <Text style={styles.serviceDuration}>
+                                  {(service as any).duration_minutes || 60} min
+                                </Text>
+                              </View>
+                              {isIndividuallyPriced(service) ? (
+                                <Text style={styles.indicativeNote}>{t('booking.individuallyPricedNote')}</Text>
+                              ) : service.price_is_indicative ? (
+                                <Text style={styles.indicativeNote}>{t('booking.indicativePriceNote')}</Text>
+                              ) : null}
+                            </View>
+
+                            {canBook ? (
+                              <View style={[styles.bookBtn, inCart && styles.bookBtnActive]}>
+                                <Text style={[styles.bookBtnText, inCart && { color: '#fff' }]}>
+                                  {inCart
+                                    ? t('booking.inCart')
+                                    : options.length
+                                      ? t('booking.chooseOption')
+                                      : t('booking.add')}
+                                </Text>
+                              </View>
+                            ) : null}
+                          </TouchableOpacity>
+                        );
+                      })
+                    : null}
                 </View>
-                
-                {canBook ? (
-                  <View style={[styles.bookBtn, inCart && styles.bookBtnActive]}>
-                    <Text style={[styles.bookBtnText, inCart && { color: '#fff' }]}>
-                      {inCart ? t('booking.inCart') : options.length ? t('booking.chooseOption') : t('booking.add')}
-                    </Text>
-                  </View>
-                ) : null}
-              </TouchableOpacity>
-            );
+              );
             })
           )}
         </View>
@@ -676,6 +755,36 @@ const styles = StyleSheet.create({
   galleryImage: { width: 220, height: 150, borderRadius: 16, backgroundColor: '#EDE9FE' },
   hoursSection: { backgroundColor: '#fff', marginTop: 12, padding: 24, ...Colors.shadows.sm },
   servicesSection: { backgroundColor: '#fff', marginTop: 12, padding: 24, ...Colors.shadows.sm },
+  serviceSearchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    height: 46,
+    marginBottom: 16,
+  },
+  serviceSearchInput: {
+    flex: 1,
+    color: Colors.light.text,
+    fontSize: 15,
+    fontWeight: '600',
+    ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as any) : null),
+  },
+  serviceCategoryBlock: { marginBottom: 10 },
+  serviceCategoryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+  },
+  serviceCategoryDot: { width: 10, height: 10, borderRadius: 5 },
+  serviceCategoryTitle: { flex: 1, fontSize: 15, fontWeight: '800', color: '#334155' },
+  serviceCategoryCount: { fontSize: 12, fontWeight: '700', color: '#94A3B8', marginRight: 4 },
   emptyServices: { alignItems: 'center', paddingVertical: 40, gap: 10 },
   serviceItem: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

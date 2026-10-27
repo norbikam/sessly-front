@@ -167,6 +167,7 @@ export type ServiceWritePayload = {
   promotion_valid_until?: string | null;
   price_is_indicative?: boolean;
   is_active?: boolean;
+  sort_order?: number;
   options?: Array<{
     id?: string;
     name: string;
@@ -237,6 +238,15 @@ export const updateService = async (
     form,
   );
   return response.data;
+};
+
+export const reorderServices = async (
+  businessSlug: string,
+  orderedIds: string[],
+): Promise<void> => {
+  await apiClient.post(`/businesses/${businessSlug}/services/reorder/`, {
+    ordered_ids: orderedIds,
+  });
 };
 
 export const getServiceCategories = async (slug: string): Promise<ServiceCategory[]> => {

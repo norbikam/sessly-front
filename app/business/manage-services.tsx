@@ -1,11 +1,19 @@
-import React, { useState, useCallback } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, ScrollView, Alert,
+  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, Alert, ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { router, useFocusEffect } from 'expo-router';
-import { deleteService, getMyServices, getServiceCategories, updateService } from '../../api/business';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
+import {
+  deleteService,
+  getMyServices,
+  getServiceCategories,
+  reorderServices,
+  updateService,
+} from '../../api/business';
 import { Service, ServiceCategory } from '../../types/api';
 import Colors from '../../constants/Colors';
 import AppSwitch from '../../components/ui/AppSwitch';
@@ -15,6 +23,7 @@ import { formatServicePrice } from '../../utils/currency';
 import { goBackToApp } from '../../utils/navigation';
 import { formatApiError, notify } from '../../utils/notify';
 import { localizedName } from '../../utils/localized';
+import { buildServiceGroups } from '../../utils/serviceGroups';
 
 export default function ManageServicesScreen() {
   const { activeLocation } = useLocation();
@@ -24,6 +33,7 @@ export default function ManageServicesScreen() {
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [savingOrder, setSavingOrder] = useState(false);
 
   const loadData = useCallback(async () => {
     if (!businessSlug) {
@@ -49,7 +59,12 @@ export default function ManageServicesScreen() {
   useFocusEffect(
     useCallback(() => {
       void loadData();
-    }, [loadData])
+    }, [loadData]),
+  );
+
+  const serviceGroups = useMemo(
+    () => buildServiceGroups(services, categories, t('booking.uncategorized')),
+    [services, categories, t],
   );
 
   const confirmDelete = (id: string | number) => {
@@ -99,23 +114,95 @@ export default function ManageServicesScreen() {
     }
   };
 
-  const serviceGroups = [
-    ...categories.map((category) => ({
-      id: category.id,
-      name: category.name,
-      color: category.color,
-      services: services.filter((service) => service.category?.id === category.id),
-    })),
-    {
-      id: 'uncategorized',
-      name: 'Pozostałe',
-      color: '#94A3B8',
-      services: services.filter((service) => !service.category),
-    },
-  ].filter((group) => group.services.length > 0);
+  const persistOrder = async (nextServices: Service[]) => {
+    if (!businessSlug) return;
+    const previous = services;
+    setServices(nextServices);
+    setSavingOrder(true);
+    try {
+      await reorderServices(
+        businessSlug,
+        nextServices.map((item) => String(item.id)),
+      );
+    } catch (e: any) {
+      setServices(previous);
+      notify('Błąd', formatApiError(e, 'Nie udało się zapisać kolejności.'));
+    } finally {
+      setSavingOrder(false);
+    }
+  };
+
+  const reorderGroup = (groupId: string, nextGroupServices: Service[]) => {
+    const nextFlat: Service[] = [];
+    for (const group of serviceGroups) {
+      if (group.id === groupId) {
+        nextFlat.push(...nextGroupServices);
+      } else {
+        nextFlat.push(...group.services);
+      }
+    }
+    void persistOrder(nextFlat.map((item, index) => ({ ...item, sort_order: index })));
+  };
+
+  const renderService = ({ item, drag, isActive }: RenderItemParams<Service>) => {
+    const inactive = item.is_active === false;
+    return (
+      <ScaleDecorator>
+        <View style={[styles.serviceItem, inactive && styles.serviceItemInactive, isActive && styles.serviceItemDragging]}>
+          <TouchableOpacity onLongPress={drag} delayLongPress={100} style={styles.dragHandle} hitSlop={8}>
+            <Ionicons name="menu" size={20} color="#94A3B8" />
+          </TouchableOpacity>
+          <View style={styles.serviceIconContainer}>
+            {item.image_url ? (
+              <Image source={{ uri: item.image_url }} style={styles.serviceImage} contentFit="cover" />
+            ) : (
+              <Ionicons name="cut-outline" size={20} color={Colors.light.accent} />
+            )}
+          </View>
+          <View style={styles.serviceInfo}>
+            <Text style={[styles.serviceName, inactive && styles.inactiveText]}>
+              {localizedName(item, language)}
+            </Text>
+            <View style={styles.serviceMeta}>
+              <Text style={styles.serviceMetaText}>{item.duration_minutes} min</Text>
+              <View style={styles.dot} />
+              <Text style={styles.serviceMetaTextBold}>
+                {formatServicePrice(item, currency, {
+                  individuallyPricedLabel: t('booking.individuallyPriced'),
+                })}
+              </Text>
+            </View>
+            <View style={styles.activeRow}>
+              <Text style={styles.activeLabel}>
+                {inactive ? t('services.inactive') : t('services.active')}
+              </Text>
+              <AppSwitch
+                value={!inactive}
+                disabled={togglingId === String(item.id)}
+                onValueChange={(value) => void toggleActive(item, value)}
+                trackColor={{ false: '#CBD5E1', true: '#C4B5FD' }}
+                thumbColor={!inactive ? Colors.light.accent : '#f4f3f4'}
+              />
+            </View>
+          </View>
+          <TouchableOpacity
+            style={styles.editBtn}
+            onPress={() =>
+              router.push({ pathname: '/business/service-form', params: { id: String(item.id) } } as any)
+            }
+          >
+            <Ionicons name="create-outline" size={20} color={Colors.light.accent} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.deleteBtn} onPress={() => confirmDelete(item.id)}>
+            <Ionicons name="trash-outline" size={20} color="#EF4444" />
+          </TouchableOpacity>
+        </View>
+      </ScaleDecorator>
+    );
+  };
 
   return (
-    <View style={styles.container}>
+    <GestureHandlerRootView style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => goBackToApp(router)} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color={Colors.light.text} />
@@ -147,70 +234,31 @@ export default function ManageServicesScreen() {
             <Text style={styles.emptySubtext}>Dodaj pierwszą pozycję do cennika osobnym przyciskiem powyżej.</Text>
           </View>
         ) : (
-          serviceGroups.map((group) => (
-            <View key={group.id} style={styles.serviceGroup}>
-              <View style={styles.groupHeader}>
-                <View style={[styles.groupDot, { backgroundColor: group.color }]} />
-                <Text style={styles.groupTitle}>{group.name}</Text>
-                <Text style={styles.groupCount}>{group.services.length}</Text>
+          <>
+            <Text style={styles.dragHint}>
+              {savingOrder ? 'Zapisywanie kolejności…' : t('services.dragHint')}
+            </Text>
+            {serviceGroups.map((group) => (
+              <View key={group.id} style={styles.serviceGroup}>
+                <View style={styles.groupHeader}>
+                  <View style={[styles.groupDot, { backgroundColor: group.color }]} />
+                  <Text style={styles.groupTitle}>{group.name}</Text>
+                  <Text style={styles.groupCount}>{group.services.length}</Text>
+                </View>
+                <DraggableFlatList
+                  data={group.services}
+                  keyExtractor={(item) => String(item.id)}
+                  onDragEnd={({ data }) => reorderGroup(group.id, data)}
+                  activationDistance={6}
+                  scrollEnabled={false}
+                  renderItem={renderService}
+                />
               </View>
-              {group.services.map((item) => {
-                const inactive = item.is_active === false;
-                return (
-                  <View
-                    key={String(item.id)}
-                    style={[styles.serviceItem, inactive && styles.serviceItemInactive]}
-                  >
-                    <View style={styles.serviceIconContainer}>
-                      {item.image_url ? (
-                        <Image source={{ uri: item.image_url }} style={styles.serviceImage} contentFit="cover" />
-                      ) : (
-                        <Ionicons name="cut-outline" size={20} color={Colors.light.accent} />
-                      )}
-                    </View>
-                    <View style={styles.serviceInfo}>
-                      <Text style={[styles.serviceName, inactive && styles.inactiveText]}>
-                        {localizedName(item, language)}
-                      </Text>
-                      <View style={styles.serviceMeta}>
-                        <Text style={styles.serviceMetaText}>{item.duration_minutes} min</Text>
-                        <View style={styles.dot} />
-                        <Text style={styles.serviceMetaTextBold}>
-                          {formatServicePrice(item, currency, {
-                            individuallyPricedLabel: t('booking.individuallyPriced'),
-                          })}
-                        </Text>
-                      </View>
-                      <View style={styles.activeRow}>
-                        <Text style={styles.activeLabel}>
-                          {inactive ? t('services.inactive') : t('services.active')}
-                        </Text>
-                        <AppSwitch
-                          value={!inactive}
-                          disabled={togglingId === String(item.id)}
-                          onValueChange={(value) => void toggleActive(item, value)}
-                          trackColor={{ false: '#CBD5E1', true: '#C4B5FD' }}
-                          thumbColor={!inactive ? Colors.light.accent : '#f4f3f4'}
-                        />
-                      </View>
-                    </View>
-                    <TouchableOpacity
-                      style={styles.editBtn}
-                      onPress={() => router.push({ pathname: '/business/service-form', params: { id: String(item.id) } } as any)}
-                    >
-                      <Ionicons name="create-outline" size={20} color={Colors.light.accent} />
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.deleteBtn} onPress={() => confirmDelete(item.id)}>
-                      <Ionicons name="trash-outline" size={20} color="#EF4444" />
-                    </TouchableOpacity>
-                  </View>
-                );
-              })}
-            </View>
-          ))
+            ))}
+          </>
         )}
       </ScrollView>
-    </View>
+    </GestureHandlerRootView>
   );
 }
 
@@ -224,7 +272,7 @@ const styles = StyleSheet.create({
   backBtn: { marginRight: 15 },
   title: { fontSize: 20, fontWeight: '800', color: Colors.light.text },
   scrollContent: { padding: 20, paddingBottom: 100 },
-  actions: { flexDirection: 'row', gap: 10, marginBottom: 18 },
+  actions: { flexDirection: 'row', gap: 10, marginBottom: 12 },
   actionBtn: {
     flexDirection: 'row', gap: 6, height: 44, paddingHorizontal: 14, borderRadius: 14,
     backgroundColor: Colors.light.accent, alignItems: 'center',
@@ -235,19 +283,24 @@ const styles = StyleSheet.create({
     backgroundColor: '#EDE9FE', alignItems: 'center',
   },
   secondaryText: { color: Colors.light.accent, fontWeight: '800' },
+  dragHint: { color: '#64748B', fontSize: 12, fontWeight: '600', marginBottom: 14 },
   loadingContainer: { alignItems: 'center', marginTop: 40 },
   loadingText: { marginTop: 12, color: Colors.light.textSecondary, fontWeight: '500' },
+  serviceGroup: { marginBottom: 12 },
   serviceItem: {
-    backgroundColor: '#fff', padding: 16, borderRadius: 16, marginBottom: 12,
+    backgroundColor: '#fff', padding: 14, borderRadius: 16, marginBottom: 10,
     flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#F1F5F9',
   },
   serviceItemInactive: { opacity: 0.72, backgroundColor: '#F8FAFC' },
+  serviceItemDragging: { borderColor: Colors.light.accent, backgroundColor: '#FAF8FF' },
+  dragHandle: {
+    width: 32, height: 40, alignItems: 'center', justifyContent: 'center', marginRight: 4,
+  },
   serviceIconContainer: {
     width: 44, height: 44, borderRadius: 12, backgroundColor: '#F5F3FF',
-    justifyContent: 'center', alignItems: 'center', marginRight: 14,
+    justifyContent: 'center', alignItems: 'center', marginRight: 12,
   },
   serviceImage: { width: '100%', height: '100%', borderRadius: 12 },
-  serviceGroup: { marginBottom: 18 },
   groupHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 9, paddingHorizontal: 4 },
   groupDot: { width: 10, height: 10, borderRadius: 5, marginRight: 8 },
   groupTitle: { color: '#334155', fontSize: 15, fontWeight: '800' },
