@@ -15,7 +15,13 @@ import { router } from 'expo-router';
 import { goBackToApp } from '../../utils/navigation';
 import * as ImagePicker from 'expo-image-picker';
 
-import { deleteBusinessImage, getBusinessGallery, uploadBusinessImage, UploadAsset } from '../../api/business';
+import {
+  deleteBusinessImage,
+  getBusinessGallery,
+  setBusinessCoverImage,
+  uploadBusinessImage,
+  UploadAsset,
+} from '../../api/business';
 import Colors from '../../constants/Colors';
 import { useLocation } from '../../contexts/LocationContext';
 import { BusinessImage } from '../../types/api';
@@ -91,6 +97,22 @@ export default function BusinessGalleryScreen() {
     }
   };
 
+  const handleSetCover = async (image: BusinessImage) => {
+    if (!activeLocation?.slug || image.is_cover) return;
+    try {
+      await setBusinessCoverImage(activeLocation.slug, image.id);
+      setImages((current) =>
+        current.map((item) => ({
+          ...item,
+          is_cover: String(item.id) === String(image.id),
+        })),
+      );
+      notify('Baner', 'Ustawiono jako baner wizytówki.');
+    } catch (error: any) {
+      notify('Błąd', error?.message || 'Nie udało się ustawić banera.');
+    }
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -133,11 +155,19 @@ export default function BusinessGalleryScreen() {
           renderItem={({ item }) => (
             <View style={styles.imageCard}>
               <Image source={{ uri: item.url }} style={styles.image} contentFit="cover" />
-              {item.is_cover ? <Text style={styles.coverBadge}>Okładka</Text> : null}
+              {item.is_cover ? <Text style={styles.coverBadge}>Baner</Text> : null}
               {item.caption ? <Text style={styles.caption} numberOfLines={2}>{item.caption}</Text> : null}
-              <TouchableOpacity style={styles.deleteButton} onPress={() => handleDelete(item)}>
-                <Ionicons name="trash-outline" size={18} color="#EF4444" />
-              </TouchableOpacity>
+              <View style={styles.imageActions}>
+                {!item.is_cover ? (
+                  <TouchableOpacity style={styles.coverButton} onPress={() => handleSetCover(item)}>
+                    <Ionicons name="image-outline" size={16} color={Colors.light.accent} />
+                    <Text style={styles.coverButtonText}>Baner</Text>
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity style={styles.deleteButton} onPress={() => handleDelete(item)}>
+                  <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                </TouchableOpacity>
+              </View>
             </View>
           )}
         />
@@ -165,8 +195,11 @@ const styles = StyleSheet.create({
   row: { gap: 12 },
   imageCard: { flex: 1, minWidth: 0, borderRadius: 16, padding: 8, marginBottom: 12, backgroundColor: '#fff' },
   image: { width: '100%', aspectRatio: 1.4, borderRadius: 12, backgroundColor: '#EDE9FE' },
-  coverBadge: { position: 'absolute', left: 14, top: 14, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, color: '#fff', backgroundColor: Colors.light.accent, fontSize: 11, fontWeight: '800' },
+  coverBadge: { position: 'absolute', left: 14, top: 14, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, color: '#fff', backgroundColor: Colors.light.accent, fontSize: 11, fontWeight: '800', overflow: 'hidden' },
   caption: { color: Colors.light.textSecondary, fontSize: 12, marginTop: 8, paddingRight: 28 },
-  deleteButton: { position: 'absolute', right: 10, bottom: 8, padding: 6 },
+  imageActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 6 },
+  coverButton: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 6, borderRadius: 8, backgroundColor: '#F5F3FF' },
+  coverButtonText: { color: Colors.light.accent, fontSize: 12, fontWeight: '800' },
+  deleteButton: { padding: 6 },
   empty: { color: Colors.light.textSecondary, textAlign: 'center', marginTop: 30 },
 });

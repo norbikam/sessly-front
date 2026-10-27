@@ -10,7 +10,12 @@ import { router } from 'expo-router';
 import apiClient from '../../api/client';
 import Colors from '../../constants/Colors';
 import { CUSTOMER_DEPOSITS_ENABLED } from '../../constants/config';
-import { lookupBusinessRegistry, updateBusinessProfile, UploadAsset } from '../../api/business';
+import {
+  lookupBusinessRegistry,
+  updateBusinessProfile,
+  uploadBusinessImage,
+  UploadAsset,
+} from '../../api/business';
 import { goBackToApp } from '../../utils/navigation';
 import { formatApiError, notify } from '../../utils/notify';
 import { useLocation } from '../../contexts/LocationContext';
@@ -38,7 +43,12 @@ export default function EditBusinessProfileScreen() {
   const [logoAsset, setLogoAsset] = useState<UploadAsset | null>(null);
   const [logoBroken, setLogoBroken] = useState(false);
   const [logoDragOver, setLogoDragOver] = useState(false);
+  const [bannerUrl, setBannerUrl] = useState('');
+  const [bannerAsset, setBannerAsset] = useState<UploadAsset | null>(null);
+  const [bannerBroken, setBannerBroken] = useState(false);
+  const [bannerDragOver, setBannerDragOver] = useState(false);
   const [brandColor, setBrandColor] = useState('#8B5CF6');
+  const [businessSlug, setBusinessSlug] = useState<string | null>(null);
   
   // Adres
   const [address, setAddress] = useState('');
@@ -69,6 +79,7 @@ export default function EditBusinessProfileScreen() {
 
       // 2. Bezpiecznie zapisujemy PRAWDZIWE ID z bazy danych
       setBusinessId(String(business.id));
+      setBusinessSlug(business.slug || activeLocation?.slug || null);
 
       setName(business.name || '');
       setDescription(business.description || '');
@@ -76,6 +87,7 @@ export default function EditBusinessProfileScreen() {
       setWebsite(business.website_url || '');
       setNip(business.nip || '');
       setLogoUrl(business.logo_url || '');
+      setBannerUrl(business.cover_image || '');
       setBrandColor(BRAND_COLORS.includes(business.brand_color) ? business.brand_color : '#8B5CF6');
       
       setAddress(business.address_line1 || '');
@@ -148,21 +160,62 @@ export default function EditBusinessProfileScreen() {
     }
   };
 
+  const applyBannerFile = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      notify('Baner', 'Wybierz plik JPG, PNG lub WebP.');
+      return;
+    }
+    setBannerBroken(false);
+    setBannerAsset({
+      uri: URL.createObjectURL(file),
+      fileName: file.name,
+      mimeType: file.type || 'image/jpeg',
+    });
+  };
+
+  const handlePickBanner = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      notify('Brak dostępu', 'Zezwól aplikacji na dostęp do zdjęć.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [16, 9],
+      quality: 0.85,
+    });
+    if (!result.canceled) {
+      setBannerBroken(false);
+      setBannerAsset(result.assets[0]);
+    }
+  };
+
   const logoPreviewUri = logoAsset?.uri || logoUrl || null;
   const showLogoPreview = Boolean(logoPreviewUri) && !logoBroken;
-  const logoDropProps = Platform.OS === 'web'
-    ? ({
-        onDragEnter: (event: any) => { event.preventDefault?.(); setLogoDragOver(true); },
-        onDragOver: (event: any) => { event.preventDefault?.(); setLogoDragOver(true); },
-        onDragLeave: (event: any) => { event.preventDefault?.(); setLogoDragOver(false); },
-        onDrop: (event: any) => {
-          event.preventDefault?.();
-          setLogoDragOver(false);
-          const file = event?.dataTransfer?.files?.[0] as File | undefined;
-          if (file) applyLogoFile(file);
-        },
-      } as Record<string, unknown>)
-    : {};
+  const bannerPreviewUri = bannerAsset?.uri || bannerUrl || null;
+  const showBannerPreview = Boolean(bannerPreviewUri) && !bannerBroken;
+
+  const makeDropProps = (
+    setOver: (v: boolean) => void,
+    onFile: (file: File) => void,
+  ) =>
+    Platform.OS === 'web'
+      ? ({
+          onDragEnter: (event: any) => { event.preventDefault?.(); setOver(true); },
+          onDragOver: (event: any) => { event.preventDefault?.(); setOver(true); },
+          onDragLeave: (event: any) => { event.preventDefault?.(); setOver(false); },
+          onDrop: (event: any) => {
+            event.preventDefault?.();
+            setOver(false);
+            const file = event?.dataTransfer?.files?.[0] as File | undefined;
+            if (file) onFile(file);
+          },
+        } as Record<string, unknown>)
+      : {};
+
+  const logoDropProps = makeDropProps(setLogoDragOver, applyLogoFile);
+  const bannerDropProps = makeDropProps(setBannerDragOver, applyBannerFile);
 
   const handleSave = async () => {
     if (!name || !phone || !address || !city) {
@@ -205,6 +258,14 @@ export default function EditBusinessProfileScreen() {
       }
 
       await updateBusinessProfile(businessId, payload, logoAsset);
+
+      if (bannerAsset && (businessSlug || activeLocation?.slug)) {
+        await uploadBusinessImage(businessSlug || activeLocation!.slug, bannerAsset, {
+          is_cover: true,
+          caption: 'Baner',
+          sort_order: 0,
+        });
+      }
 
       notify('Sukces!', 'Wizytówka Twojego salonu została pomyślnie zaktualizowana.');
       goBackToApp(router);
@@ -312,7 +373,7 @@ export default function EditBusinessProfileScreen() {
         <View style={styles.formCard}>
           <Text style={styles.sectionTitle}>Wygląd wizytówki</Text>
 
-          <Text style={styles.inputLabel}>Logo</Text>
+          <Text style={styles.inputLabel}>Logo (kwadrat)</Text>
           <TouchableOpacity
             style={[styles.logoPicker, logoDragOver && styles.logoPickerDragOver]}
             onPress={handlePickLogo}
@@ -328,18 +389,44 @@ export default function EditBusinessProfileScreen() {
                   onError={() => setLogoBroken(true)}
                 />
               ) : (
-                <Ionicons name="image-outline" size={34} color={Colors.light.accent} />
+                <Ionicons name="storefront-outline" size={34} color={Colors.light.accent} />
               )}
             </View>
             <View style={styles.logoPickerText}>
               <Text style={styles.logoPickerTitle}>{showLogoPreview ? 'Zmień logo' : 'Wybierz logo'}</Text>
               <Text style={styles.logoPickerHint}>
-                {Platform.OS === 'web'
-                  ? 'Kliknij lub upuść kwadratowe zdjęcie · JPG/PNG/WebP · max 8 MB'
-                  : 'Kwadratowe zdjęcie, maks. 8 MB'}
+                Pokazuje się przy nazwie salonu · 1:1 · JPG/PNG/WebP · max 8 MB
               </Text>
             </View>
           </TouchableOpacity>
+
+          <Text style={styles.inputLabel}>Baner (tło wizytówki)</Text>
+          <TouchableOpacity
+            style={[styles.bannerPicker, bannerDragOver && styles.logoPickerDragOver]}
+            onPress={handlePickBanner}
+            activeOpacity={0.85}
+            {...bannerDropProps}
+          >
+            {showBannerPreview ? (
+              <Image
+                source={{ uri: bannerPreviewUri as string }}
+                style={styles.bannerPreview}
+                contentFit="cover"
+                onError={() => setBannerBroken(true)}
+              />
+            ) : (
+              <View style={styles.bannerEmpty}>
+                <Ionicons name="image-outline" size={34} color={Colors.light.accent} />
+                <Text style={styles.logoPickerTitle}>Wybierz baner</Text>
+                <Text style={styles.logoPickerHint}>Szerokie zdjęcie 16:9 · osobno od logo</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          {showBannerPreview ? (
+            <Text style={[styles.logoPickerHint, { marginBottom: 12 }]}>
+              Baner to tło u góry wizytówki — nie zastępuje logo.
+            </Text>
+          ) : null}
 
           <Text style={styles.inputLabel}>Kolor profilu</Text>
           <View style={styles.colorGrid}>
@@ -427,6 +514,20 @@ const styles = StyleSheet.create({
   },
   lookupButtonText: { color: '#fff', fontWeight: '800', fontSize: 13 },
   hint: { fontSize: 12, color: '#64748B', marginTop: -8, marginBottom: 12, marginLeft: 4, lineHeight: 16 },
+  bannerPicker: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    maxHeight: 220,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: '#C4B5FD',
+    backgroundColor: '#FAF5FF',
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  bannerPreview: { width: '100%', height: '100%' },
+  bannerEmpty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6, padding: 16 },
   logoPicker: {
     flexDirection: 'row', alignItems: 'center', minHeight: 104, padding: 12, marginBottom: 16,
     borderRadius: 16, borderWidth: 1, borderColor: '#DDD6FE', backgroundColor: '#FAF5FF',

@@ -58,9 +58,17 @@ const ACTIONS = [
     route: '/business/edit-profile',
     icon: 'create-outline' as const,
     label: 'Edytuj Profil',
-    sub: 'Adres, opis, kontakt',
+    sub: 'Logo, baner, adres',
     accent: '#7C3AED',
     bg: '#EDE9FE',
+  },
+  {
+    route: '__preview__',
+    icon: 'eye-outline' as const,
+    label: 'Podgląd wizytówki',
+    sub: 'Tak widzą Cię klienci',
+    accent: '#0EA5E9',
+    bg: '#E0F2FE',
   },
   {
     route: '/business/subscription',
@@ -415,7 +423,21 @@ export default function BusinessDashboard() {
             <TouchableOpacity
               key={action.route}
               style={[styles.actionCard, isDesktop && styles.actionCardDesktop]}
-              onPress={() => router.push(action.route as any)}
+              onPress={() => {
+                if (action.route === '__preview__') {
+                  const slug = activeLocation?.slug || business?.slug;
+                  if (!slug) {
+                    Alert.alert('Brak lokalizacji', 'Najpierw dodaj lub wybierz miejsce.');
+                    return;
+                  }
+                  router.push({
+                    pathname: '/business/[id]',
+                    params: { id: slug, preview: '1' },
+                  } as any);
+                  return;
+                }
+                router.push(action.route as any);
+              }}
               activeOpacity={0.85}
             >
               <View style={[styles.actionIcon, { backgroundColor: action.bg }]}>

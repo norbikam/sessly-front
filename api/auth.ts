@@ -161,16 +161,49 @@ export const getCurrentUser = async (): Promise<User> => {
   return response.data;
 };
 
-export const updateCurrentUser = async (data: {
+export type UpdateCurrentUserData = {
   preferred_language?: 'pl' | 'en' | 'de';
   preferred_currency?: 'PLN' | 'EUR';
   first_name?: string;
   last_name?: string;
+  phone_number?: string;
   notify_email_reminders?: boolean;
   notify_push_reminders?: boolean;
   notify_promotions?: boolean;
-}): Promise<User> => {
-  const response = await apiClient.patch<User>("/users/me/", data);
+  avatar?: { uri: string; fileName?: string | null; mimeType?: string | null };
+};
+
+export const updateCurrentUser = async (data: UpdateCurrentUserData): Promise<User> => {
+  if (data.avatar) {
+    const form = new FormData();
+    Object.entries(data).forEach(([key, value]) => {
+      if (key === 'avatar' || value === undefined || value === null) return;
+      form.append(key, String(value));
+    });
+    const asset = data.avatar;
+    const rawName = asset.fileName || `avatar-${Date.now()}.jpg`;
+    const type = (asset.mimeType || 'image/jpeg').toLowerCase();
+    const name = /\.(jpe?g|png|webp)$/i.test(rawName)
+      ? rawName
+      : `${rawName.replace(/\.[^.]+$/, '') || 'avatar'}.jpg`;
+    if (typeof window !== 'undefined' && asset.uri.startsWith('blob:')) {
+      const blobRes = await fetch(asset.uri);
+      const blob = await blobRes.blob();
+      const file = typeof File !== 'undefined' ? new File([blob], name, { type: blob.type || type }) : blob;
+      form.append('avatar', file as Blob, name);
+    } else if (typeof window !== 'undefined' && asset.uri.startsWith('http')) {
+      const blobRes = await fetch(asset.uri);
+      const blob = await blobRes.blob();
+      form.append('avatar', blob, name);
+    } else {
+      form.append('avatar', { uri: asset.uri, name, type } as any);
+    }
+    const response = await apiClient.patch<User>('/users/me/', form, {
+      headers: { 'Content-Type': undefined as unknown as string },
+    });
+    return response.data;
+  }
+  const response = await apiClient.patch<User>('/users/me/', data);
   return response.data;
 };
 

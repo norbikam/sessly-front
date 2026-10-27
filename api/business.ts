@@ -508,6 +508,17 @@ export const deleteBusinessImage = async (slug: string, imageId: string): Promis
   await apiClient.delete(`/businesses/${slug}/gallery/${imageId}/`);
 };
 
+export const setBusinessCoverImage = async (
+  slug: string,
+  imageId: string,
+): Promise<BusinessImage> => {
+  const response = await apiClient.patch<BusinessImage>(
+    `/businesses/${slug}/gallery/${imageId}/`,
+    { is_cover: true },
+  );
+  return response.data;
+};
+
 export const getBusinessReviews = async (slug: string): Promise<Review[]> => {
   const response = await apiClient.get(`/businesses/${slug}/reviews/`);
   return unwrapList<Review>(response.data);

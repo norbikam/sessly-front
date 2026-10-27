@@ -26,6 +26,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Colors from '../../constants/Colors';
 import { useLocale } from '../../contexts/LocaleContext';
+import { useResponsive } from '../../hooks/useResponsive';
 import SearchBar from '../../components/search/SearchBar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { categoryLabel } from '../../utils/categories';
@@ -75,6 +76,7 @@ function HomeListHeader({
   isLoggedIn,
   firstName,
   username,
+  avatarUrl,
   searchQuery,
   onChangeSearch,
   upcomingAppointments,
@@ -93,6 +95,7 @@ function HomeListHeader({
   isLoggedIn: boolean;
   firstName?: string | null;
   username?: string | null;
+  avatarUrl?: string | null;
   searchQuery: string;
   onChangeSearch: (text: string) => void;
   upcomingAppointments: number;
@@ -130,11 +133,15 @@ function HomeListHeader({
               <Text style={styles.userName} numberOfLines={1}>
                 {firstName || username || t('home.profile')}
               </Text>
-              <View style={styles.avatarPlaceholder}>
-                <Text style={styles.avatarText}>
-                  {(firstName?.[0] || username?.[0] || '?').toUpperCase()}
-                </Text>
-              </View>
+              {avatarUrl ? (
+                <Image source={{ uri: avatarUrl }} style={styles.avatarImage} contentFit="cover" />
+              ) : (
+                <View style={styles.avatarPlaceholder}>
+                  <Text style={styles.avatarText}>
+                    {(firstName?.[0] || username?.[0] || '?').toUpperCase()}
+                  </Text>
+                </View>
+              )}
             </TouchableOpacity>
           ) : (
             <TouchableOpacity style={styles.loginPill} onPress={onLogin}>
@@ -331,6 +338,8 @@ export default function HomeScreen() {
   const router = useRouter();
   const { user, isLoggedIn } = useAuth();
   const { language, t } = useLocale();
+  const { width, isTabletUp } = useResponsive();
+  const columns = width >= 1100 ? 3 : isTabletUp ? 2 : 1;
   // ✅ POBIERAMY favoriteIds, aby FlatList wiedział, kiedy ma się odświeżyć
   const { favoriteIds, isFavorite, toggleFavorite } = useFavorites();
   
@@ -469,6 +478,7 @@ export default function HomeScreen() {
       isLoggedIn={isLoggedIn}
       firstName={user?.first_name}
       username={user?.username}
+      avatarUrl={user?.avatar_url}
       searchQuery={searchQuery}
       onChangeSearch={setSearchQuery}
       upcomingAppointments={upcomingAppointments}
@@ -498,11 +508,11 @@ export default function HomeScreen() {
 
     return (
       <TouchableOpacity 
-        style={styles.card}
+        style={[styles.card, columns > 1 && styles.cardGrid]}
         onPress={() => router.push({ pathname: '/business/[id]', params: { id: item.slug || String(item.id) } })}
         activeOpacity={0.9}
       >
-        <View style={styles.imageContainer}>
+        <View style={[styles.imageContainer, columns > 1 && styles.imageContainerGrid]}>
           {imageUrl ? (
             <Image source={{ uri: imageUrl }} style={styles.businessImage} contentFit="cover" transition={200} />
           ) : (
@@ -517,7 +527,7 @@ export default function HomeScreen() {
         
         <View style={styles.cardContent}>
           <View style={styles.cardHeaderRow}>
-            <Text style={styles.businessName} numberOfLines={1}>{item.name}</Text>
+            <Text style={styles.businessName} numberOfLines={2}>{item.name}</Text>
           </View>
 
           <Text style={styles.categoryLabel}>{categoryDisplay}</Text>
@@ -555,11 +565,11 @@ export default function HomeScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, columns > 1 && styles.containerDesktop]}>
       {loading && !refreshing ? (
         <View>
           {listHeader}
-          <View style={styles.listContent}>
+          <View style={[styles.listContent, columns > 1 && styles.listContentDesktop]}>
             <SkeletonCard />
             <SkeletonCard />
           </View>
@@ -572,7 +582,10 @@ export default function HomeScreen() {
           renderItem={renderBusinessCard}
           ListHeaderComponent={listHeader}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, columns > 1 && styles.listDesktop]}
+          numColumns={columns}
+          key={`home-${columns}`}
+          columnWrapperStyle={columns > 1 ? styles.columnWrapper : undefined}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.light.accent} />}
           ListEmptyComponent={
             !searching ? (
@@ -602,6 +615,11 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
+  containerDesktop: {
+    maxWidth: 1120,
+    width: '100%',
+    alignSelf: 'center',
+  },
   
   headerWrapper: { backgroundColor: '#F8FAFC' },
   headerGradient: { paddingTop: Platform.OS === 'ios' ? 60 : 40, paddingBottom: 30, paddingHorizontal: 20, overflow: 'hidden' },
@@ -613,6 +631,7 @@ const styles = StyleSheet.create({
   
   userBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.2)', paddingVertical: 6, paddingLeft: 14, paddingRight: 6, borderRadius: 24, gap: 8 },
   avatarPlaceholder: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center' },
+  avatarImage: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#fff' },
   avatarText: { fontSize: 14, fontWeight: '800', color: '#8B5CF6' },
   userName: { fontSize: 14, fontWeight: '700', color: '#fff', maxWidth: 100 },
   
@@ -645,10 +664,15 @@ const styles = StyleSheet.create({
   sortButtonText: { fontSize: 14, color: '#8B5CF6', fontWeight: '700' },
 
   list: { paddingBottom: 100 },
+  listDesktop: { paddingHorizontal: 12, paddingBottom: 120 },
   listContent: { padding: 20 },
+  listContentDesktop: { paddingHorizontal: 12 },
+  columnWrapper: { paddingHorizontal: 8 },
   
   card: { backgroundColor: '#fff', marginHorizontal: 20, marginBottom: 20, borderRadius: 16, overflow: 'hidden', shadowColor: '#4C1D95', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 4 },
+  cardGrid: { flex: 1, marginHorizontal: 8, marginBottom: 16, maxWidth: undefined },
   imageContainer: { width: '100%', height: 160, backgroundColor: '#F1F5F9', position: 'relative' },
+  imageContainerGrid: { height: 150 },
   businessImage: { width: '100%', height: '100%' },
   businessImagePlaceholder: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', backgroundColor: '#F5F3FF' },
   

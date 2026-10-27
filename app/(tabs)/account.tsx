@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl, Platform, ActivityIndicator } from 'react-native';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 import { useFavorites } from '../../contexts/FavoritesContext';
@@ -108,7 +109,11 @@ export default function AccountScreen() {
         <LinearGradient colors={['#8B5CF6', '#7C3AED']} style={styles.headerGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
           <View style={styles.headerContent}>
             <View style={styles.avatarContainer}>
-              <Text style={styles.avatarText}>{(user?.first_name?.[0] || user?.username?.[0] || '?').toUpperCase()}</Text>
+              {user?.avatar_url ? (
+                <Image source={{ uri: user.avatar_url }} style={styles.avatarImage} contentFit="cover" />
+              ) : (
+                <Text style={styles.avatarText}>{(user?.first_name?.[0] || user?.username?.[0] || '?').toUpperCase()}</Text>
+              )}
             </View>
             <View style={styles.headerTextContainer}>
               <Text style={styles.userName} numberOfLines={1}>{user?.first_name ? `${user.first_name} ${user.last_name || ''}` : user?.username}</Text>
@@ -323,7 +328,8 @@ const styles = StyleSheet.create({
   
   headerGradient: { paddingTop: Platform.OS === 'ios' ? 60 : 40, paddingBottom: 40, paddingHorizontal: 20, borderBottomLeftRadius: 32, borderBottomRightRadius: 32 },
   headerContent: { flexDirection: 'row', alignItems: 'center' },
-  avatarContainer: { width: 70, height: 70, borderRadius: 35, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', marginRight: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8 },
+  avatarContainer: { width: 70, height: 70, borderRadius: 35, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', marginRight: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, overflow: 'hidden' },
+  avatarImage: { width: 70, height: 70 },
   avatarText: { fontSize: 28, fontWeight: '900', color: Colors.light.accent },
   headerTextContainer: { flex: 1 },
   userName: { fontSize: 22, fontWeight: '800', color: '#fff', marginBottom: 4 },

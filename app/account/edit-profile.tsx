@@ -7,64 +7,86 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  Alert,
   Platform,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import { goBackToApp } from '../../utils/navigation';
 import { useAuth } from '../../contexts/AuthContext';
+import { updateCurrentUser } from '../../api/auth';
 import Colors from '../../constants/Colors';
+import { notify } from '../../utils/notify';
+
+type UploadAsset = { uri: string; fileName?: string | null; mimeType?: string | null };
 
 export default function EditProfileScreen() {
   const router = useRouter();
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, refreshUser } = useAuth();
 
   const [firstName, setFirstName] = useState(user?.first_name || '');
   const [lastName, setLastName] = useState(user?.last_name || '');
-  const [phone, setPhone] = useState(user?.phone || '');
+  const [phone, setPhone] = useState(user?.phone_number || user?.phone || '');
+  const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || '');
+  const [avatarAsset, setAvatarAsset] = useState<UploadAsset | null>(null);
+  const [avatarBroken, setAvatarBroken] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  const previewUri = avatarAsset?.uri || avatarUrl || null;
+  const showPreview = Boolean(previewUri) && !avatarBroken;
+  const initial = (firstName || user?.username || '?').trim().charAt(0).toUpperCase();
+
+  const handlePickAvatar = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      notify('Brak dostępu', 'Zezwól aplikacji na dostęp do zdjęć.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.85,
+    });
+    if (!result.canceled) {
+      setAvatarBroken(false);
+      setAvatarAsset(result.assets[0]);
+    }
+  };
 
   const handleSave = async () => {
     if (!firstName.trim() || !lastName.trim()) {
-      const msg = 'Imię i nazwisko są wymagane';
-      if (Platform.OS === 'web') {
-        window.alert(msg);
-      } else {
-        Alert.alert('Błąd', msg);
-      }
+      notify('Błąd', 'Imię i nazwisko są wymagane');
       return;
     }
 
     try {
       setLoading(true);
+      const updated = await updateCurrentUser({
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        phone_number: phone.trim() || undefined,
+        avatar: avatarAsset || undefined,
+      });
 
-      // Update local state (backend endpoint not ready yet)
       if (updateUser) {
         await updateUser({
-          first_name: firstName,
-          last_name: lastName,
-          phone: phone || undefined,
+          ...updated,
+          phone: updated.phone_number || phone.trim() || undefined,
         });
       }
+      await refreshUser();
 
-      const successMsg = 'Profil został zaktualizowany';
-      if (Platform.OS === 'web') {
-        window.alert(successMsg);
-      } else {
-        Alert.alert('Sukces', successMsg);
-      }
-
+      notify('Sukces', 'Profil został zaktualizowany');
       goBackToApp(router, '/(tabs)/account');
     } catch (error: any) {
       console.error('❌ [EditProfile] Update error:', error);
-
-      const errorMsg = 'Nie udało się zaktualizować profilu';
-      if (Platform.OS === 'web') {
-        window.alert(`Błąd: ${errorMsg}`);
-      } else {
-        Alert.alert('Błąd', errorMsg);
-      }
+      const msg =
+        error?.response?.data?.detail
+        || error?.response?.data?.error?.message
+        || 'Nie udało się zaktualizować profilu';
+      notify('Błąd', typeof msg === 'string' ? msg : 'Nie udało się zaktualizować profilu');
     } finally {
       setLoading(false);
     }
@@ -72,7 +94,6 @@ export default function EditProfileScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => goBackToApp(router, '/(tabs)/account')} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#333" />
@@ -81,22 +102,38 @@ export default function EditProfileScreen() {
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView 
-        style={Platform.select({web: {maxHeight: '100vh'} as any, default: styles.scrollView})} 
+      <ScrollView
+        style={Platform.select({ web: { maxHeight: '100vh' } as any, default: styles.scrollView })}
         contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={true}
+        showsVerticalScrollIndicator
       >
-        {/* Avatar Section */}
         <View style={styles.avatarSection}>
-          <View style={styles.avatarPlaceholder}>
-            <Ionicons name="person" size={40} color="#fff" />
-          </View>
-          <Text style={styles.changeAvatarText}>Zmień zdjęcie (wkrótce)</Text>
+          <TouchableOpacity style={styles.avatarBtn} onPress={handlePickAvatar} activeOpacity={0.85}>
+            {showPreview ? (
+              <Image
+                source={{ uri: previewUri as string }}
+                style={styles.avatarImage}
+                contentFit="cover"
+                onError={() => setAvatarBroken(true)}
+              />
+            ) : (
+              <View style={styles.avatarPlaceholder}>
+                <Text style={styles.avatarLetter}>{initial}</Text>
+              </View>
+            )}
+            <View style={styles.cameraBadge}>
+              <Ionicons name="camera" size={14} color="#fff" />
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handlePickAvatar}>
+            <Text style={styles.changeAvatarText}>
+              {showPreview ? 'Zmień zdjęcie profilowe' : 'Dodaj zdjęcie profilowe'}
+            </Text>
+          </TouchableOpacity>
+          <Text style={styles.avatarHint}>Kwadratowe zdjęcie · JPG/PNG/WebP · max 8 MB</Text>
         </View>
 
-        {/* Form */}
         <View style={styles.form}>
-          {/* Email (read-only) */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Email</Text>
             <View style={[styles.input, styles.inputDisabled]}>
@@ -106,7 +143,6 @@ export default function EditProfileScreen() {
             <Text style={styles.helperText}>Email nie może być zmieniony</Text>
           </View>
 
-          {/* First Name */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>
               Imię <Text style={styles.required}>*</Text>
@@ -124,7 +160,6 @@ export default function EditProfileScreen() {
             </View>
           </View>
 
-          {/* Last Name */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>
               Nazwisko <Text style={styles.required}>*</Text>
@@ -142,7 +177,6 @@ export default function EditProfileScreen() {
             </View>
           </View>
 
-          {/* Phone */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Telefon</Text>
             <View style={styles.input}>
@@ -156,199 +190,105 @@ export default function EditProfileScreen() {
                 keyboardType="phone-pad"
               />
             </View>
-            <Text style={styles.helperText}>Opcjonalne</Text>
           </View>
         </View>
 
-        {/* Security Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Bezpieczeństwo</Text>
-          
-          <TouchableOpacity 
-            style={styles.menuItem}
-            onPress={() => router.push('/account/change-password' as any)}
-          >
-            <Ionicons name="lock-closed-outline" size={24} color="#666" />
-            <Text style={styles.menuItemText}>Zmień hasło</Text>
-            <Ionicons name="chevron-forward" size={20} color="#ccc" />
-          </TouchableOpacity>
-        </View>
-
-        {/* Save Button */}
-        <View style={styles.buttonContainer}>
-          <TouchableOpacity
-            style={[styles.saveButton, loading && styles.saveButtonDisabled]}
-            onPress={handleSave}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <>
-                <Ionicons name="checkmark-circle-outline" size={20} color="#fff" />
-                <Text style={styles.saveButtonText}>Zapisz zmiany</Text>
-              </>
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.cancelButton} onPress={() => goBackToApp(router, '/(tabs)/account')}>
-            <Text style={styles.cancelButtonText}>Anuluj</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          style={[styles.saveButton, loading && styles.saveButtonDisabled]}
+          onPress={handleSave}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.saveButtonText}>Zapisz zmiany</Text>
+          )}
+        </TouchableOpacity>
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.light.background,
-    paddingTop: Platform.OS === 'ios' ? 50 : Platform.OS === 'android' ? 0 : 0,
-  },
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingTop: Platform.OS === 'ios' ? 56 : 36,
+    paddingBottom: 14,
     backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E2E8F0',
   },
-  backButton: {
-    padding: 4,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#333',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 120,
-  },
-  avatarSection: {
-    backgroundColor: '#fff',
-    paddingVertical: 32,
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
+  backButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  headerTitle: { fontSize: 18, fontWeight: '800', color: '#1E293B' },
+  scrollView: { flex: 1 },
+  scrollContent: { padding: 20, paddingBottom: 40 },
+  avatarSection: { alignItems: 'center', marginBottom: 28 },
+  avatarBtn: { position: 'relative' },
   avatarPlaceholder: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: Colors.accent,
-    justifyContent: 'center',
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: Colors.light.accent,
     alignItems: 'center',
-    marginBottom: 16,
+    justifyContent: 'center',
+  },
+  avatarLetter: { color: '#fff', fontSize: 36, fontWeight: '900' },
+  avatarImage: { width: 96, height: 96, borderRadius: 48, backgroundColor: '#EDE9FE' },
+  cameraBadge: {
+    position: 'absolute',
+    right: 2,
+    bottom: 2,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Colors.light.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
   },
   changeAvatarText: {
-    fontSize: 14,
-    color: '#999',
+    marginTop: 12,
+    color: Colors.light.accent,
+    fontWeight: '800',
+    fontSize: 15,
   },
+  avatarHint: { marginTop: 4, color: '#94A3B8', fontSize: 12, fontWeight: '600' },
   form: {
     backgroundColor: '#fff',
-    marginTop: 12,
-    padding: 16,
-  },
-  inputGroup: {
+    borderRadius: 20,
+    padding: 18,
     marginBottom: 20,
   },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 8,
-  },
-  required: {
-    color: '#e74c3c',
-  },
+  inputGroup: { marginBottom: 16 },
+  label: { fontSize: 13, fontWeight: '800', color: '#64748B', marginBottom: 8, textTransform: 'uppercase' },
+  required: { color: '#EF4444' },
   input: {
     flexDirection: 'row',
     alignItems: 'center',
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: '#F8FAFC',
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 14,
-    backgroundColor: '#fff',
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 14,
   },
-  inputDisabled: {
-    backgroundColor: '#f5f5f5',
-    borderColor: '#e0e0e0',
-  },
-  inputIcon: {
-    marginRight: 10,
-  },
-  inputText: {
-    flex: 1,
-    fontSize: 16,
-    color: '#333',
-  },
-  inputTextDisabled: {
-    flex: 1,
-    fontSize: 16,
-    color: '#999',
-  },
-  helperText: {
-    fontSize: 12,
-    color: '#999',
-    marginTop: 4,
-  },
-  section: {
-    backgroundColor: '#fff',
-    marginTop: 12,
-    padding: 16,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#333',
-    marginBottom: 12,
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  menuItemText: {
-    fontSize: 16,
-    marginLeft: 12,
-    color: '#333',
-    flex: 1,
-  },
-  buttonContainer: {
-    padding: 16,
-  },
+  inputDisabled: { backgroundColor: '#F1F5F9' },
+  inputIcon: { marginRight: 10 },
+  inputText: { flex: 1, fontSize: 16, color: '#1E293B', fontWeight: '600' },
+  inputTextDisabled: { flex: 1, fontSize: 16, color: '#94A3B8', fontWeight: '600' },
+  helperText: { marginTop: 6, fontSize: 12, color: '#94A3B8' },
   saveButton: {
-    flexDirection: 'row',
+    height: 54,
+    borderRadius: 16,
+    backgroundColor: Colors.light.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.accent,
-    paddingVertical: 16,
-    borderRadius: 8,
-    gap: 8,
   },
-  saveButtonDisabled: {
-    opacity: 0.6,
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  cancelButton: {
-    alignItems: 'center',
-    paddingVertical: 16,
-    marginTop: 8,
-  },
-  cancelButtonText: {
-    color: '#666',
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  saveButtonDisabled: { opacity: 0.6 },
+  saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '800' },
 });

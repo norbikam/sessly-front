@@ -53,10 +53,11 @@ function AnimatedHeart({ isFavorite, onPress }: { isFavorite: boolean; onPress: 
 }
 
 export default function BusinessDetailScreen() {
-  const { id } = useLocalSearchParams();
+  const params = useLocalSearchParams();
+  const id = params.id;
+  const isPreview = params.preview === '1' || params.preview === 'true';
   const router = useRouter();
   const { width } = useWindowDimensions();
-  const isWeb = Platform.OS === 'web' && width > 768;
   const isDesktop = Platform.OS === 'web' && width >= 1024;
   const { isLoggedIn, user } = useAuth();
   const { currency, language, t } = useLocale();
@@ -98,8 +99,10 @@ export default function BusinessDetailScreen() {
   const [optionPickerService, setOptionPickerService] = useState<Service | null>(null);
   const [serviceQuery, setServiceQuery] = useState('');
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
-  // Owners/staff manage the salon — everyone else (customers, platform admin, guests) can book.
-  const canBook = user?.role !== 'business_owner' && user?.role !== 'staff';
+  // Preview shows customer UI for owners; real booking stays for customers/guests.
+  const showCustomerUi =
+    isPreview || (user?.role !== 'business_owner' && user?.role !== 'staff');
+  const canBook = showCustomerUi && !isPreview;
 
   useEffect(() => {
     const loadBusiness = async () => {
@@ -185,6 +188,14 @@ export default function BusinessDetailScreen() {
   };
 
   const handleBook = (service: Service) => {
+    if (isPreview) {
+      notify('Podgląd', 'To tylko podgląd wizytówki — klienci mogą tu dodawać usługi do koszyka.');
+      return;
+    }
+    if (!showCustomerUi) {
+      notify('Konto firmowe', 'Zaloguj się na konto klienta, żeby zarezerwować wizytę.');
+      return;
+    }
     if (!canBook) {
       notify('Konto firmowe', 'Zaloguj się na konto klienta, żeby zarezerwować wizytę.');
       return;
@@ -334,10 +345,22 @@ export default function BusinessDetailScreen() {
   const businessId = String(business.id);
   const favorite = isFavorite(businessId);
 
+  const coverUri = business.cover_image || null;
+
   return (
     <View style={styles.container}>
+      {isPreview ? (
+        <View style={styles.previewBanner}>
+          <Ionicons name="eye-outline" size={18} color="#fff" />
+          <Text style={styles.previewBannerText}>Podgląd wizytówki · tak widzą Cię klienci</Text>
+          <TouchableOpacity onPress={() => goBackToApp(router, '/(tabs)')} hitSlop={10}>
+            <Text style={styles.previewBannerClose}>Zamknij</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
       {/* Nawigacja Górna */}
-      <View style={styles.topNav}>
+      <View style={[styles.topNav, isPreview && styles.topNavPreview, isDesktop && styles.topNavDesktop]}>
         <TouchableOpacity style={styles.navBtn} onPress={() => goBackToApp(router, '/(tabs)')}>
           <Ionicons name="arrow-back" size={24} color={Colors.light.text} />
         </TouchableOpacity>
@@ -355,14 +378,15 @@ export default function BusinessDetailScreen() {
       </View>
 
       <ScrollView 
-        contentContainerStyle={[styles.scrollContent, isWeb && styles.webScrollContent]}
+        contentContainerStyle={[styles.scrollContent, isDesktop && styles.scrollDesktop]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Zdjęcie w tle */}
-        <View style={[styles.coverImage, { backgroundColor: business.brand_color || '#B8A3E0' }]}>
-          {business.cover_image || business.images?.[0]?.url || business.logo_url ? (
+        <View style={isDesktop ? styles.desktopShell : undefined}>
+        {/* Baner — osobno od logo */}
+        <View style={[styles.coverImage, isDesktop && styles.coverImageDesktop, { backgroundColor: business.brand_color || '#B8A3E0' }]}>
+          {coverUri ? (
             <Image
-              source={{ uri: business.cover_image || business.images?.[0]?.url || business.logo_url }}
+              source={{ uri: coverUri }}
               style={StyleSheet.absoluteFill}
               contentFit="cover"
             />
@@ -376,7 +400,7 @@ export default function BusinessDetailScreen() {
         </View>
 
         {/* Główne informacje */}
-        <View style={[styles.mainInfoCard, isWeb && styles.webCard]}>
+        <View style={[styles.mainInfoCard, isDesktop && styles.webCard]}>
           <View style={styles.titleRow}>
             {business.logo_url ? (
               <Image source={{ uri: business.logo_url }} style={styles.logoAvatar} contentFit="cover" />
@@ -394,11 +418,17 @@ export default function BusinessDetailScreen() {
             </View>
           ) : null}
 
-          <View style={styles.actionRow}>
-            {canBook ? (
+          <View style={[styles.actionRow, isDesktop && styles.actionRowDesktop]}>
+            {showCustomerUi ? (
               <TouchableOpacity
-                style={[styles.actionBtn, following && { backgroundColor: Colors.light.accent }]}
-                onPress={handleFollowing}
+                style={[styles.actionBtn, isDesktop && styles.actionBtnDesktop, following && { backgroundColor: Colors.light.accent }]}
+                onPress={() => {
+                  if (isPreview) {
+                    notify('Podgląd', 'Obserwowanie działa u klientów — tu tylko podgląd.');
+                    return;
+                  }
+                  void handleFollowing();
+                }}
                 disabled={changingFollowing}
               >
                 {changingFollowing
@@ -408,14 +438,14 @@ export default function BusinessDetailScreen() {
               </TouchableOpacity>
             ) : null}
             {business.phone_number && (
-              <TouchableOpacity style={styles.actionBtn} onPress={() => Linking.openURL(`tel:${business.phone_number}`)}>
+              <TouchableOpacity style={[styles.actionBtn, isDesktop && styles.actionBtnDesktop]} onPress={() => Linking.openURL(`tel:${business.phone_number}`)}>
                 <Ionicons name="call-outline" size={18} color="#fff" />
                 <Text style={styles.actionBtnText} numberOfLines={1}>{t('business.call')}</Text>
               </TouchableOpacity>
             )}
             
             <TouchableOpacity 
-              style={[styles.actionBtn, { backgroundColor: '#F5F3FF' }]} 
+              style={[styles.actionBtn, styles.actionBtnSecondary, isDesktop && styles.actionBtnDesktop]} 
               onPress={() => Linking.openURL(`http://maps.apple.com/?q=${encodeURIComponent(address || business.name)}`)}
             >
               <Ionicons name="map-outline" size={18} color={Colors.light.accent} />
@@ -424,7 +454,7 @@ export default function BusinessDetailScreen() {
 
             {(business as any).website_url && (
               <TouchableOpacity 
-                style={[styles.actionBtn, { backgroundColor: '#F5F3FF' }]} 
+                style={[styles.actionBtn, styles.actionBtnSecondary, isDesktop && styles.actionBtnDesktop]} 
                 onPress={() => Linking.openURL((business as any).website_url)}
               >
                 <Ionicons name="globe-outline" size={18} color={Colors.light.accent} />
@@ -442,25 +472,29 @@ export default function BusinessDetailScreen() {
 
         </View>
 
-        {business.images && business.images.length > 1 ? (
-          <View style={[styles.gallerySection, isWeb && styles.webCard]}>
-            <Text style={styles.sectionTitle}>{t('business.gallery')}</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.galleryRow}>
-              {business.images.map((image) => (
-                <Image key={image.id} source={{ uri: image.url }} style={styles.galleryImage} contentFit="cover" />
-              ))}
-            </ScrollView>
-          </View>
-        ) : null}
+        {(() => {
+          const galleryImages = (business.images || []).filter((image) => !image.is_cover);
+          if (!galleryImages.length) return null;
+          return (
+            <View style={[styles.gallerySection, isDesktop && styles.webCard]}>
+              <Text style={[styles.sectionTitle, { paddingHorizontal: isDesktop ? 0 : 24 }]}>{t('business.gallery')}</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.galleryRow}>
+                {galleryImages.map((image) => (
+                  <Image key={image.id} source={{ uri: image.url }} style={styles.galleryImage} contentFit="cover" />
+                ))}
+              </ScrollView>
+            </View>
+          );
+        })()}
 
         {hours.length > 0 && (
-          <View style={[styles.hoursSection, isWeb && styles.webCard]}>
+          <View style={[styles.hoursSection, isDesktop && styles.webCard]}>
             <OpeningHoursCard hours={hours} />
           </View>
         )}
 
         {/* Sekcja Usług */}
-        <View style={[styles.servicesSection, isWeb && styles.webCard]}>
+        <View style={[styles.servicesSection, isDesktop && styles.webCard]}>
           <Text style={styles.sectionTitle}>{t('booking.selectService')}</Text>
 
           {services.length > 0 ? (
@@ -517,8 +551,9 @@ export default function BusinessDetailScreen() {
                     />
                   </TouchableOpacity>
 
-                  {!collapsed
-                    ? group.services.map((service: Service) => {
+                  {!collapsed ? (
+                    <View style={[styles.serviceGrid, isDesktop && styles.serviceGridDesktop]}>
+                      {group.services.map((service: Service) => {
                         const options = activeServiceOptions(service);
                         const inCart = cart.some((item) => String(item.service.id) === String(service.id));
                         const promotionActive = Boolean(
@@ -528,20 +563,30 @@ export default function BusinessDetailScreen() {
                         return (
                           <TouchableOpacity
                             key={service.id}
-                            style={[styles.serviceItem, inCart && styles.serviceItemActive]}
+                            style={[
+                              styles.serviceItem,
+                              isDesktop && styles.serviceItemDesktop,
+                              inCart && styles.serviceItemActive,
+                            ]}
                             onPress={() => handleBook(service)}
                             activeOpacity={0.7}
-                            disabled={!canBook}
+                            disabled={!showCustomerUi}
                           >
                             {service.image_url ? (
                               <Image
                                 source={{ uri: service.image_url }}
-                                style={styles.serviceThumb}
+                                style={[styles.serviceThumb, isDesktop && styles.serviceThumbDesktop]}
                                 contentFit="cover"
                               />
+                            ) : isDesktop ? (
+                              <View style={[styles.serviceThumb, styles.serviceThumbDesktop, styles.serviceThumbFallback]}>
+                                <Ionicons name="cut-outline" size={28} color="#A78BFA" />
+                              </View>
                             ) : null}
                             <View style={styles.serviceDetails}>
-                              <Text style={styles.serviceName}>{localizedName(service, language)}</Text>
+                              <Text style={styles.serviceName} numberOfLines={isDesktop ? 2 : undefined}>
+                                {localizedName(service, language)}
+                              </Text>
                               {localizedDescription(service, language) ? (
                                 <Text style={styles.serviceDesc} numberOfLines={2}>
                                   {localizedDescription(service, language)}
@@ -576,8 +621,8 @@ export default function BusinessDetailScreen() {
                               ) : null}
                             </View>
 
-                            {canBook ? (
-                              <View style={[styles.bookBtn, inCart && styles.bookBtnActive]}>
+                            {showCustomerUi ? (
+                              <View style={[styles.bookBtn, isDesktop && styles.bookBtnDesktop, inCart && styles.bookBtnActive]}>
                                 <Text style={[styles.bookBtnText, inCart && { color: '#fff' }]}>
                                   {inCart
                                     ? t('booking.inCart')
@@ -589,15 +634,16 @@ export default function BusinessDetailScreen() {
                             ) : null}
                           </TouchableOpacity>
                         );
-                      })
-                    : null}
+                      })}
+                    </View>
+                  ) : null}
                 </View>
               );
             })
           )}
         </View>
 
-        <View style={[styles.reviewsSection, isWeb && styles.webCard]}>
+        <View style={[styles.reviewsSection, isDesktop && styles.webCard]}>
           <Text style={styles.sectionTitle}>{t('business.reviewsCount', undefined, { count: reviews.length })}</Text>
           {(business.can_review && isLoggedIn) || editingReview ? (
             <View style={styles.reviewForm}>
@@ -649,6 +695,7 @@ export default function BusinessDetailScreen() {
               ) : null}
             </View>
           )) : <Text style={styles.descText}>{t('business.noReviews')}</Text>}
+        </View>
         </View>
       </ScrollView>
 
@@ -830,21 +877,35 @@ const styles = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'space-between',
     position: 'absolute', top: Platform.OS === 'ios' ? 50 : 30, left: 16, right: 16, zIndex: 10
   },
+  topNavPreview: { top: Platform.OS === 'ios' ? 90 : 70 },
+  topNavDesktop: {},
   topNavRight: { flexDirection: 'row', gap: 10 },
   navBtn: {
     width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.95)',
     justifyContent: 'center', alignItems: 'center', ...Colors.shadows.sm
   },
   scrollContent: { paddingBottom: 120 },
-  // Full-bleed on desktop — only dialogs/cart need a tight max-width
-  webScrollContent: { width: '100%' },
+  scrollDesktop: { alignItems: 'center' },
+  desktopShell: { width: '100%', maxWidth: 1100 },
+  previewBanner: {
+    backgroundColor: '#0F172A',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    zIndex: 20,
+  },
+  previewBannerText: { flex: 1, color: '#fff', fontWeight: '700', fontSize: 13 },
+  previewBannerClose: { color: '#A78BFA', fontWeight: '800', fontSize: 13 },
   coverImage: { height: 280, backgroundColor: '#B8A3E0', justifyContent: 'center', alignItems: 'center', position: 'relative', overflow: 'hidden' },
+  coverImageDesktop: { height: 320, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
   imageGradient: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 120 },
   mainInfoCard: {
     backgroundColor: '#fff', borderTopLeftRadius: 32, borderTopRightRadius: 32,
     marginTop: -32, padding: 24, ...Colors.shadows.sm
   },
-  webCard: { borderRadius: 24, marginTop: 24, marginHorizontal: 20 },
+  webCard: { borderRadius: 24, marginTop: 16, marginHorizontal: 0, overflow: 'hidden' },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 10 },
   logoAvatar: { width: 56, height: 56, borderRadius: 16, backgroundColor: '#F5F3FF' },
   logoAvatarFallback: { alignItems: 'center', justifyContent: 'center' },
@@ -853,22 +914,60 @@ const styles = StyleSheet.create({
   serviceThumb: {
     width: 64, height: 64, borderRadius: 14, marginRight: 12, backgroundColor: '#F5F3FF',
   },
+  serviceThumbDesktop: {
+    width: '100%',
+    height: 140,
+    marginRight: 0,
+    marginBottom: 12,
+    borderRadius: 14,
+  },
+  serviceThumbFallback: { alignItems: 'center', justifyContent: 'center' },
   infoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 6 },
   infoText: { fontSize: 15, color: Colors.light.textSecondary, flex: 1, fontWeight: '500' },
   actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 24 },
+  actionRowDesktop: { gap: 10 },
   actionBtn: {
     width: '48%',
-    minHeight: 52,
-    flexDirection: 'column',
+    minHeight: 48,
+    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 14,
     backgroundColor: Colors.light.accent,
-    gap: 4,
+    gap: 8,
   },
-  actionBtnText: { color: '#fff', fontWeight: '800', fontSize: 12 },
+  actionBtnDesktop: {
+    width: 'auto',
+    flexGrow: 0,
+    paddingHorizontal: 18,
+  },
+  actionBtnSecondary: { backgroundColor: '#F5F3FF' },
+  actionBtnText: { color: '#fff', fontWeight: '800', fontSize: 13 },
+  serviceGrid: {},
+  serviceGridDesktop: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    padding: 12,
+  },
+  serviceItemDesktop: {
+    width: '48.5%',
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 14,
+    marginBottom: 0,
+  },
+  bookBtnDesktop: {
+    alignSelf: 'stretch',
+    marginTop: 12,
+    alignItems: 'center',
+  },
   descSection: { paddingTop: 24, borderTopWidth: 1, borderTopColor: Colors.light.border },
   promotionBox: { flexDirection: 'row', gap: 12, borderWidth: 1, borderRadius: 16, padding: 16, backgroundColor: '#FAF8FF' },
   promotionContent: { flex: 1 },
