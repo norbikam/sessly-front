@@ -28,12 +28,20 @@ LocaleConfig.locales['pl'] = {
 };
 LocaleConfig.defaultLocale = 'pl';
 
+type CartSummaryItem = {
+  service: Service;
+  optionName?: string | null;
+  durationMinutes?: number | null;
+  priceLabel?: string | null;
+};
+
 interface BookingModalProps {
   visible: boolean;
   onClose: () => void;
   service: Service;
   serviceIds?: string[];
   serviceOptionIds?: Array<string | null>;
+  cartItems?: CartSummaryItem[];
   business: Business;
   onConfirm: (date: string, time: string, staffId?: string) => void;
 }
@@ -44,6 +52,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
   service,
   serviceIds,
   serviceOptionIds,
+  cartItems,
   business,
   onConfirm,
 }) => {
@@ -53,6 +62,11 @@ const BookingModal: React.FC<BookingModalProps> = ({
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedStaffId, setSelectedStaffId] = useState<string | undefined>();
+  const multiItems = cartItems && cartItems.length > 1 ? cartItems : null;
+  const totalMinutes = (cartItems || []).reduce(
+    (sum, item) => sum + (item.durationMinutes || item.service.duration_minutes || 0),
+    0,
+  );
 
   // Zresetuj stan przy otwarciu
   useEffect(() => {
@@ -141,31 +155,60 @@ const BookingModal: React.FC<BookingModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          {/* Service Info */}
+          {/* Service / cart summary */}
           <View style={styles.serviceInfo}>
-            <Text style={styles.serviceName}>{localizedName(service, language)}</Text>
-            <View style={styles.serviceMeta}>
-              <View style={styles.metaItem}>
-                <Ionicons name="time-outline" size={16} color="#666" />
-                <Text style={styles.metaText}>
-                  {service.duration_minutes} min
-                </Text>
-              </View>
-              <View style={styles.metaItem}>
-                <Ionicons name="cash-outline" size={16} color="#666" />
-                <Text style={styles.metaText}>
-                  {formatServicePrice(service, currency, {
-                    individuallyPricedLabel: t('booking.individuallyPriced'),
+            {multiItems ? (
+              <>
+                <Text style={styles.serviceName}>
+                  {t('business.bookServices', undefined, {
+                    count: multiItems.length,
+                    label:
+                      multiItems.length === 1
+                        ? t('business.serviceSingular')
+                        : t('business.servicePlural'),
+                    minutes: totalMinutes || service.duration_minutes,
                   })}
-                  {service.price_is_indicative && !isIndividuallyPriced(service) ? '*' : ''}
                 </Text>
-              </View>
-            </View>
-            {isIndividuallyPriced(service) ? (
-              <Text style={styles.indicativeNote}>{t('booking.individuallyPricedNote')}</Text>
-            ) : service.price_is_indicative ? (
-              <Text style={styles.indicativeNote}>{t('booking.indicativePriceNote')}</Text>
-            ) : null}
+                {multiItems.map((item, index) => (
+                  <View key={`${item.service.id}-${index}`} style={styles.cartSummaryRow}>
+                    <Text style={styles.cartSummaryName} numberOfLines={1}>
+                      {localizedName(item.service, language)}
+                      {item.optionName ? ` · ${item.optionName}` : ''}
+                    </Text>
+                    <Text style={styles.cartSummaryMeta}>
+                      {item.durationMinutes || item.service.duration_minutes || 0} min
+                      {item.priceLabel ? ` · ${item.priceLabel}` : ''}
+                    </Text>
+                  </View>
+                ))}
+              </>
+            ) : (
+              <>
+                <Text style={styles.serviceName}>{localizedName(service, language)}</Text>
+                <View style={styles.serviceMeta}>
+                  <View style={styles.metaItem}>
+                    <Ionicons name="time-outline" size={16} color="#666" />
+                    <Text style={styles.metaText}>
+                      {service.duration_minutes} min
+                    </Text>
+                  </View>
+                  <View style={styles.metaItem}>
+                    <Ionicons name="cash-outline" size={16} color="#666" />
+                    <Text style={styles.metaText}>
+                      {formatServicePrice(service, currency, {
+                        individuallyPricedLabel: t('booking.individuallyPriced'),
+                      })}
+                      {service.price_is_indicative && !isIndividuallyPriced(service) ? '*' : ''}
+                    </Text>
+                  </View>
+                </View>
+                {isIndividuallyPriced(service) ? (
+                  <Text style={styles.indicativeNote}>{t('booking.individuallyPricedNote')}</Text>
+                ) : service.price_is_indicative ? (
+                  <Text style={styles.indicativeNote}>{t('booking.indicativePriceNote')}</Text>
+                ) : null}
+              </>
+            )}
           </View>
 
           <ScrollView style={styles.content} showsVerticalScrollIndicator={true}>
@@ -318,7 +361,9 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
+    justifyContent: Platform.OS === 'web' ? 'center' : 'flex-end',
+    alignItems: Platform.OS === 'web' ? 'center' : undefined,
+    padding: Platform.OS === 'web' ? 24 : 0,
   },
   modalContainer: {
     backgroundColor: '#fff',
@@ -327,11 +372,32 @@ const styles = StyleSheet.create({
     height: '90%',
     ...Platform.select({
       web: {
-        maxWidth: 600,
-        alignSelf: 'center',
+        maxWidth: 560,
         width: '100%',
+        maxHeight: 720,
+        height: 'auto' as any,
+        minHeight: 520,
+        borderRadius: 24,
+        overflow: 'hidden',
       },
     }),
+  },
+  cartSummaryRow: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#E5E7EB',
+  },
+  cartSummaryName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  cartSummaryMeta: {
+    marginTop: 2,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748B',
   },
   header: {
     flexDirection: 'row',

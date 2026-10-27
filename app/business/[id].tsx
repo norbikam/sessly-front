@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, ActivityIndicator, 
-  TouchableOpacity, Platform, Dimensions, Linking, Alert, Share,
-  Animated, Pressable, TextInput, Modal,
+  TouchableOpacity, Platform, Linking, Alert, Share,
+  Animated, Pressable, TextInput, Modal, useWindowDimensions,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { goBackToApp } from '../../utils/navigation';
@@ -33,9 +33,6 @@ const cartItemKey = (item: CartItem) =>
 const activeServiceOptions = (service: Service) =>
   (service.options || []).filter((item) => item.is_active !== false);
 
-const { width } = Dimensions.get('window');
-const isWeb = Platform.OS === 'web' && width > 768;
-
 // ✨ Animowane Serduszko (Ulubione)
 function AnimatedHeart({ isFavorite, onPress }: { isFavorite: boolean; onPress: () => void }) {
   const scale = useState(new Animated.Value(1))[0];
@@ -58,6 +55,9 @@ function AnimatedHeart({ isFavorite, onPress }: { isFavorite: boolean; onPress: 
 export default function BusinessDetailScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
+  const { width } = useWindowDimensions();
+  const isWeb = Platform.OS === 'web' && width > 768;
+  const isDesktop = Platform.OS === 'web' && width >= 1024;
   const { isLoggedIn, user } = useAuth();
   const { currency, language, t } = useLocale();
   const { isFavorite, toggleFavorite } = useFavorites();
@@ -80,7 +80,21 @@ export default function BusinessDetailScreen() {
     () => cart.map((item) => item.option?.id || null),
     [cart],
   );
+  const cartMinutes = useMemo(
+    () =>
+      cart.reduce(
+        (sum, item) =>
+          sum
+          + (item.option?.effective_duration_minutes
+            || item.option?.duration_minutes
+            || item.service.duration_minutes
+            || 0),
+        0,
+      ),
+    [cart],
+  );
   const [showBookingModal, setShowBookingModal] = useState(false);
+  const [cartExpanded, setCartExpanded] = useState(false);
   const [optionPickerService, setOptionPickerService] = useState<Service | null>(null);
   const [serviceQuery, setServiceQuery] = useState('');
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
@@ -198,7 +212,13 @@ export default function BusinessDetailScreen() {
   const openCartBooking = () => {
     if (!cart.length) return;
     setSelectedService(cart[0].service);
+    setCartExpanded(false);
     setShowBookingModal(true);
+  };
+
+  const removeCartItem = (item: CartItem) => {
+    const key = cartItemKey(item);
+    setCart((prev) => prev.filter((row) => cartItemKey(row) !== key));
   };
 
   // ✅ PODPIĘTE PRAWDZIWE API REZERWACJI
@@ -633,23 +653,83 @@ export default function BusinessDetailScreen() {
       </ScrollView>
 
       {canBook && cart.length > 0 && (
-        <TouchableOpacity style={styles.cartBar} onPress={openCartBooking}>
-          <Text style={styles.cartBarText}>
-            {t('business.bookServices', undefined, {
-              count: cart.length,
-              label: cart.length === 1 ? t('business.serviceSingular') : t('business.servicePlural'),
-              minutes: cart.reduce(
-                (sum, item) =>
-                  sum
-                  + (item.option?.effective_duration_minutes
+        <View style={[styles.cartDock, isDesktop && styles.cartDockDesktop]}>
+          {cartExpanded ? (
+            <View style={[styles.cartPanel, isDesktop && styles.cartBarDesktopWidth]}>
+              <View style={styles.cartPanelHeader}>
+                <Text style={styles.cartPanelTitle}>{t('business.cartTitle')}</Text>
+                <TouchableOpacity onPress={() => setCartExpanded(false)} hitSlop={12}>
+                  <Ionicons name="chevron-down" size={22} color="#64748B" />
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={styles.cartPanelList} nestedScrollEnabled>
+                {cart.map((item) => {
+                  const minutes =
+                    item.option?.effective_duration_minutes
                     || item.option?.duration_minutes
                     || item.service.duration_minutes
-                    || 0),
-                0,
-              ),
-            })}
-          </Text>
-        </TouchableOpacity>
+                    || 0;
+                  const price = item.option
+                    ? getServicePrice(item.option, currency)
+                    : getServicePrice(item.service, currency);
+                  return (
+                    <View key={cartItemKey(item)} style={styles.cartPanelRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.cartPanelName} numberOfLines={1}>
+                          {localizedName(item.service, language)}
+                          {item.option
+                            ? ` · ${item.option.localized_name || item.option.name}`
+                            : ''}
+                        </Text>
+                        <Text style={styles.cartPanelMeta}>
+                          {minutes} min
+                          {' · '}
+                          {isIndividuallyPriced(item.service)
+                            || (price == null && item.service.price_is_indicative)
+                            ? t('booking.individuallyPriced')
+                            : formatMoney(price, currency)}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        onPress={() => removeCartItem(item)}
+                        hitSlop={10}
+                        accessibilityLabel={t('business.cartRemove')}
+                      >
+                        <Ionicons name="trash-outline" size={20} color="#DC2626" />
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+              <TouchableOpacity style={styles.cartCheckoutBtn} onPress={openCartBooking}>
+                <Text style={styles.cartBarText}>{t('business.cartCheckout')}</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={[styles.cartBar, isDesktop && styles.cartBarDesktopWidth]}
+              onPress={() => setCartExpanded(true)}
+              activeOpacity={0.9}
+            >
+              <View style={styles.cartBarLeft}>
+                <View style={styles.cartBadge}>
+                  <Text style={styles.cartBadgeText}>{cart.length}</Text>
+                </View>
+                <Text style={styles.cartBarText}>
+                  {t('business.bookServices', undefined, {
+                    count: cart.length,
+                    label:
+                      cart.length === 1
+                        ? t('business.serviceSingular')
+                        : t('business.servicePlural'),
+                    minutes: cartMinutes,
+                  })}
+                </Text>
+              </View>
+              <Ionicons name="chevron-up" size={20} color="#fff" />
+            </TouchableOpacity>
+          )}
+        </View>
       )}
 
       {canBook && showBookingModal && selectedService && (
@@ -659,6 +739,25 @@ export default function BusinessDetailScreen() {
           service={selectedService as any}
           serviceIds={cartServiceIds}
           serviceOptionIds={cartOptionIds}
+          cartItems={cart.map((item) => {
+            const price = item.option
+              ? getServicePrice(item.option, currency)
+              : getServicePrice(item.service, currency);
+            return {
+              service: item.service,
+              optionName: item.option?.localized_name || item.option?.name || null,
+              durationMinutes:
+                item.option?.effective_duration_minutes
+                || item.option?.duration_minutes
+                || item.service.duration_minutes
+                || 0,
+              priceLabel:
+                isIndividuallyPriced(item.service)
+                || (price == null && item.service.price_is_indicative)
+                  ? t('booking.individuallyPriced')
+                  : formatMoney(price, currency),
+            };
+          })}
           business={business as any}
           onConfirm={handleBookingConfirm}
         />
@@ -736,8 +835,8 @@ const styles = StyleSheet.create({
     width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.95)',
     justifyContent: 'center', alignItems: 'center', ...Colors.shadows.sm
   },
-  scrollContent: { paddingBottom: 80 },
-  webScrollContent: { maxWidth: 800, alignSelf: 'center', width: '100%' },
+  scrollContent: { paddingBottom: 120 },
+  webScrollContent: { maxWidth: 880, alignSelf: 'center', width: '100%' },
   coverImage: { height: 280, backgroundColor: '#B8A3E0', justifyContent: 'center', alignItems: 'center', position: 'relative', overflow: 'hidden' },
   imageGradient: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 120 },
   mainInfoCard: {
@@ -887,17 +986,78 @@ const styles = StyleSheet.create({
   reviewAuthor: { flex: 1, color: Colors.light.text, fontWeight: '800' },
   reviewStars: { color: '#F59E0B', fontSize: 16 },
   reviewText: { color: Colors.light.textSecondary, lineHeight: 21, marginTop: 8 },
-  cartBar: {
+  cartDock: {
     position: 'absolute',
     left: 16,
     right: 16,
     bottom: 24,
+    zIndex: 20,
+  },
+  cartDockDesktop: {
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  // child width on desktop
+  cartBarDesktopWidth: { width: '100%', maxWidth: 480 },
+  cartBar: {
     backgroundColor: Colors.light.accent,
     borderRadius: 16,
-    paddingVertical: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    ...Colors.shadows.sm,
+  },
+  cartBarLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  cartBadge: {
+    minWidth: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  cartBadgeText: { color: '#fff', fontWeight: '900', fontSize: 13 },
+  cartBarText: { color: '#fff', fontWeight: '800', fontSize: 15, flexShrink: 1 },
+  cartPanel: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    ...Colors.shadows.sm,
+    maxHeight: 360,
+  },
+  cartPanelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  cartPanelTitle: { fontSize: 17, fontWeight: '900', color: Colors.light.text },
+  cartPanelList: { maxHeight: 220 },
+  cartPanelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E5E7EB',
+  },
+  cartPanelName: { fontSize: 14, fontWeight: '800', color: Colors.light.text },
+  cartPanelMeta: { marginTop: 2, fontSize: 12, fontWeight: '600', color: '#64748B' },
+  cartCheckoutBtn: {
+    marginTop: 12,
+    backgroundColor: Colors.light.accent,
+    borderRadius: 14,
+    paddingVertical: 14,
     alignItems: 'center',
   },
-  cartBarText: { color: '#fff', fontWeight: '800', fontSize: 16 },
   backBtn: { marginTop: 20, backgroundColor: Colors.light.accent, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 12 },
   backBtnText: { color: '#fff', fontWeight: '700' },
   errorText: { fontSize: 18, color: Colors.light.textSecondary, marginTop: 16, fontWeight: '600' }

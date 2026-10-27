@@ -26,6 +26,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Colors from '../../constants/Colors';
 import { useLocale } from '../../contexts/LocaleContext';
+import { useResponsive } from '../../hooks/useResponsive';
 import SearchBar from '../../components/search/SearchBar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { categoryLabel } from '../../utils/categories';
@@ -331,6 +332,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const { user, isLoggedIn } = useAuth();
   const { language, t } = useLocale();
+  const { isTabletUp } = useResponsive();
   
   // ✅ POBIERAMY favoriteIds, aby FlatList wiedział, kiedy ma się odświeżyć
   const { favoriteIds, isFavorite, toggleFavorite } = useFavorites();
@@ -556,11 +558,11 @@ export default function HomeScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, isTabletUp && styles.containerDesktop]}>
       {loading && !refreshing ? (
         <View>
           {listHeader}
-          <View style={styles.listContent}>
+          <View style={[styles.listContent, isTabletUp && styles.listDesktop]}>
             <SkeletonCard />
             <SkeletonCard />
           </View>
@@ -573,7 +575,7 @@ export default function HomeScreen() {
           renderItem={renderBusinessCard}
           ListHeaderComponent={listHeader}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, isTabletUp && styles.listDesktop]}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.light.accent} />}
           ListEmptyComponent={
             !searching ? (
@@ -603,6 +605,8 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
+  containerDesktop: { maxWidth: 880, width: '100%', alignSelf: 'center' },
+  listDesktop: { paddingHorizontal: 8 },
   
   headerWrapper: { backgroundColor: '#F8FAFC' },
   headerGradient: { paddingTop: Platform.OS === 'ios' ? 60 : 40, paddingBottom: 30, paddingHorizontal: 20, overflow: 'hidden' },

@@ -279,34 +279,33 @@ export default function ManageServicesScreen() {
     reorderGroup(groupId, next);
   };
 
-  const renderService = (groupId: string, groupServices: Service[]) => (
-    { item, drag, isActive }: RenderItemParams<Service>,
-  ) => {
-    const index = groupServices.findIndex((row) => String(row.id) === String(item.id));
-    return (
-      <ServiceRow
-        item={item}
-        drag={drag}
-        isActive={isActive}
-        inactive={item.is_active === false}
-        toggling={togglingId === String(item.id)}
-        currency={currency}
-        language={language}
-        individuallyPricedLabel={t('booking.individuallyPriced')}
-        activeLabel={t('services.active')}
-        inactiveLabel={t('services.inactive')}
-        canMoveUp={index > 0}
-        canMoveDown={index >= 0 && index < groupServices.length - 1}
-        onMoveUp={() => moveWithinGroup(groupId, String(item.id), -1)}
-        onMoveDown={() => moveWithinGroup(groupId, String(item.id), 1)}
-        onToggle={(value) => void toggleActive(item, value)}
-        onEdit={() =>
-          router.push({ pathname: '/business/service-form', params: { id: String(item.id) } } as any)
-        }
-        onDelete={() => confirmDelete(item.id)}
-      />
-    );
-  };
+  const renderService = (groupId: string, groupServices: Service[]) =>
+    ({ item, drag, isActive }: RenderItemParams<Service>) => {
+      const index = groupServices.findIndex((row) => String(row.id) === String(item.id));
+      return (
+        <ServiceRow
+          item={item}
+          drag={drag}
+          isActive={isActive}
+          inactive={item.is_active === false}
+          toggling={togglingId === String(item.id)}
+          currency={currency}
+          language={language}
+          individuallyPricedLabel={t('booking.individuallyPriced')}
+          activeLabel={t('services.active')}
+          inactiveLabel={t('services.inactive')}
+          canMoveUp={index > 0}
+          canMoveDown={index >= 0 && index < groupServices.length - 1}
+          onMoveUp={() => moveWithinGroup(groupId, String(item.id), -1)}
+          onMoveDown={() => moveWithinGroup(groupId, String(item.id), 1)}
+          onToggle={(value) => void toggleActive(item, value)}
+          onEdit={() =>
+            router.push({ pathname: '/business/service-form', params: { id: String(item.id) } } as any)
+          }
+          onDelete={() => confirmDelete(item.id)}
+        />
+      );
+    };
 
   return (
     <GestureHandlerRootView style={styles.container}>

@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
@@ -39,8 +39,9 @@ function buildHtml(
       background: #8B5CF6; color: #fff; border-radius: 999px; width: 28px; height: 28px;
       display: flex; align-items: center; justify-content: center; font-weight: 800;
       border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,.25); font-size: 12px;
+      cursor: pointer;
     }
-    .sessly-pin.selected { background: #059669; }
+    .sessly-pin.selected { background: #059669; transform: scale(1.12); }
   </style>
 </head>
 <body>
@@ -58,7 +59,13 @@ function buildHtml(
 
     function post(id) {
       const msg = JSON.stringify({ type: 'marker', id: id });
-      if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(msg);
+      if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+        window.ReactNativeWebView.postMessage(msg);
+      }
+      // Expo web iframe — notify parent window
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(msg, '*');
+      }
     }
 
     data.markers.forEach(function (m) {
@@ -107,17 +114,31 @@ export function OsmMapView({
     ]
   );
 
-  const onMessage = (event: WebViewMessageEvent) => {
+  const handleMarkerMessage = (raw: string) => {
     try {
-      const data = JSON.parse(event.nativeEvent.data);
+      const data = JSON.parse(raw);
       if (data?.type === 'marker' && data.id) onMarkerPress?.(String(data.id));
     } catch {
       // ignore
     }
   };
 
+  const onMessage = (event: WebViewMessageEvent) => {
+    handleMarkerMessage(event.nativeEvent.data);
+  };
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return undefined;
+    const onWindowMessage = (event: MessageEvent) => {
+      if (typeof event.data !== 'string') return;
+      handleMarkerMessage(event.data);
+    };
+    window.addEventListener('message', onWindowMessage);
+    return () => window.removeEventListener('message', onWindowMessage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onMarkerPress]);
+
   if (Platform.OS === 'web') {
-    // Expo web: iframe with same Leaflet HTML
     return (
       <View style={[styles.wrap, style]}>
         <iframe

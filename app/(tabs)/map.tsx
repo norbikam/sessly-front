@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,6 +22,7 @@ import { notify } from '../../utils/notify';
 import Colors from '../../constants/Colors';
 
 type Coordinates = { latitude: number; longitude: number };
+type NearbyRow = { business: Business; distance: number | null };
 
 function distanceKm(origin: Coordinates, business: Business): number | null {
   if (business.latitude == null || business.longitude == null) return null;
@@ -67,6 +69,8 @@ function openFreeDirections(business: Business) {
 
 export default function MapScreen() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
+  const isDesktop = Platform.OS === 'web' && width >= 1024;
   const backgroundColor = useThemeColor({}, 'background');
   const textColor = useThemeColor({}, 'text');
   const cardColor = useThemeColor({}, 'card');
@@ -77,6 +81,7 @@ export default function MapScreen() {
   const [locating, setLocating] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [radiusKm, setRadiusKm] = useState(25);
+  const listRef = useRef<FlatList<NearbyRow>>(null);
 
   const loadBusinesses = useCallback(async (coords?: Coordinates | null, radius?: number) => {
     try {
@@ -146,6 +151,20 @@ export default function MapScreen() {
     router.push({ pathname: '/business/[id]', params: { id: business.slug || business.id } });
   };
 
+  const selectFromMap = (id: string) => {
+    setSelectedId(id);
+    const index = nearby.findIndex((row) => row.business.id === id);
+    if (index >= 0) {
+      try {
+        listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.2 });
+      } catch {
+        // ignore if list not ready
+      }
+    }
+    const match = businesses.find((item) => item.id === id);
+    if (match) openBusiness(match);
+  };
+
   const mapCenter = position
     ? position
     : mappable[0]
@@ -163,15 +182,58 @@ export default function MapScreen() {
     selected: selectedId === business.id,
   }));
 
+  const list = (
+    <FlatList
+      ref={listRef}
+      data={nearby}
+      keyExtractor={({ business }) => business.id}
+      contentContainerStyle={styles.list}
+      style={styles.listOverlay}
+      onScrollToIndexFailed={() => undefined}
+      ListEmptyComponent={
+        <Text style={[styles.empty, { color: muted }]}>
+          Brak firm w tym obszarze.
+        </Text>
+      }
+      renderItem={({ item }) => (
+        <TouchableOpacity
+          style={[
+            styles.card,
+            { backgroundColor: cardColor },
+            selectedId === item.business.id && styles.cardSelected,
+          ]}
+          onPress={() => openBusiness(item.business)}
+          onLongPress={() => openFreeDirections(item.business)}
+        >
+          <View style={styles.pin}>
+            <Ionicons name="location" size={24} color={Colors.accent} />
+          </View>
+          <View style={styles.content}>
+            <Text style={[styles.businessName, { color: textColor }]}>
+              {item.business.name}
+            </Text>
+            <Text style={[styles.address, { color: muted }]}>
+              {item.business.address_line1}, {item.business.city}
+            </Text>
+          </View>
+          {item.distance != null ? (
+            <Text style={styles.distance}>{item.distance.toFixed(1)} km</Text>
+          ) : null}
+          <Ionicons name="chevron-forward" size={18} color={Colors.accent} />
+        </TouchableOpacity>
+      )}
+    />
+  );
+
   return (
     <View style={[styles.container, { backgroundColor }]}>
-      <View style={styles.header}>
+      <View style={[styles.header, isDesktop && styles.headerDesktop]}>
         <View style={{ flex: 1 }}>
           <Text style={[styles.title, { color: textColor }]}>Mapa</Text>
-          <Text style={[styles.subtitle, { color: muted }]}>
+          <Text style={[styles.subtitle, { color: muted }, isDesktop && styles.subtitleDesktop]}>
             {position
-              ? `W okolicy do ${radiusKm} km · OpenStreetMap`
-              : 'OpenStreetMap · włącz lokalizację lub przeglądaj listę'}
+              ? `W okolicy do ${radiusKm} km · kliknij pinezkę, żeby otworzyć salon`
+              : 'Kliknij pinezkę na mapie albo włącz lokalizację'}
           </Text>
         </View>
         <TouchableOpacity style={styles.locationButton} onPress={locate} disabled={locating}>
@@ -184,7 +246,7 @@ export default function MapScreen() {
       </View>
 
       {position ? (
-        <View style={styles.radiusRow}>
+        <View style={[styles.radiusRow, isDesktop && styles.radiusRowDesktop]}>
           {[10, 25, 50].map((km) => (
             <TouchableOpacity
               key={km}
@@ -210,59 +272,23 @@ export default function MapScreen() {
         </View>
       ) : null}
 
-      <View style={styles.mapWrap}>
-        {loading ? (
-          <ActivityIndicator style={styles.mapLoader} color={Colors.accent} />
-        ) : (
-          <OsmMapView
-            style={styles.map}
-            center={mapCenter}
-            zoom={position ? 12 : 11}
-            markers={markers}
-            userLocation={position}
-            onMarkerPress={(id) => setSelectedId(id)}
-          />
-        )}
+      <View style={[styles.body, isDesktop && styles.bodyDesktop]}>
+        <View style={[styles.mapWrap, isDesktop && styles.mapWrapDesktop]}>
+          {loading ? (
+            <ActivityIndicator style={styles.mapLoader} color={Colors.accent} />
+          ) : (
+            <OsmMapView
+              style={styles.map}
+              center={mapCenter}
+              zoom={position ? 12 : 11}
+              markers={markers}
+              userLocation={position}
+              onMarkerPress={selectFromMap}
+            />
+          )}
+        </View>
+        <View style={[styles.listPane, isDesktop && styles.listPaneDesktop]}>{list}</View>
       </View>
-
-      <FlatList
-        data={nearby}
-        keyExtractor={({ business }) => business.id}
-        contentContainerStyle={styles.list}
-        style={styles.listOverlay}
-        ListEmptyComponent={
-          <Text style={[styles.empty, { color: muted }]}>
-            Brak firm w tym obszarze.
-          </Text>
-        }
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={[
-              styles.card,
-              { backgroundColor: cardColor },
-              selectedId === item.business.id && styles.cardSelected,
-            ]}
-            onPress={() => openBusiness(item.business)}
-            onLongPress={() => openFreeDirections(item.business)}
-          >
-            <View style={styles.pin}>
-              <Ionicons name="location" size={24} color={Colors.accent} />
-            </View>
-            <View style={styles.content}>
-              <Text style={[styles.businessName, { color: textColor }]}>
-                {item.business.name}
-              </Text>
-              <Text style={[styles.address, { color: muted }]}>
-                {item.business.address_line1}, {item.business.city}
-              </Text>
-            </View>
-            {item.distance != null ? (
-              <Text style={styles.distance}>{item.distance.toFixed(1)} km</Text>
-            ) : null}
-            <Ionicons name="chevron-forward" size={18} color={Colors.accent} />
-          </TouchableOpacity>
-        )}
-      />
     </View>
   );
 }
@@ -275,11 +301,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 16,
     paddingHorizontal: 20,
-    paddingTop: 54,
+    paddingTop: Platform.OS === 'web' ? 24 : 54,
     paddingBottom: 12,
   },
+  headerDesktop: {
+    maxWidth: 1280,
+    width: '100%',
+    alignSelf: 'center',
+    paddingHorizontal: 28,
+  },
   title: { fontSize: 25, fontWeight: '900', marginBottom: 4 },
-  subtitle: { fontSize: 13, lineHeight: 18, maxWidth: 280 },
+  subtitle: { fontSize: 13, lineHeight: 18, maxWidth: 320 },
+  subtitleDesktop: { maxWidth: 520 },
   locationButton: {
     width: 48,
     height: 48,
@@ -294,6 +327,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginBottom: 8,
   },
+  radiusRowDesktop: {
+    maxWidth: 1280,
+    width: '100%',
+    alignSelf: 'center',
+    paddingHorizontal: 28,
+  },
   radiusChip: {
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -303,9 +342,28 @@ const styles = StyleSheet.create({
   radiusChipActive: { backgroundColor: Colors.accent },
   radiusChipText: { fontSize: 13, fontWeight: '700', color: '#4B5563' },
   radiusChipTextActive: { color: '#fff' },
+  body: { flex: 1 },
+  bodyDesktop: {
+    flexDirection: 'row',
+    gap: 16,
+    maxWidth: 1280,
+    width: '100%',
+    alignSelf: 'center',
+    paddingHorizontal: 28,
+    paddingBottom: 20,
+  },
   mapWrap: { height: 280, marginHorizontal: 16, borderRadius: 18, overflow: 'hidden' },
+  mapWrapDesktop: { flex: 1.2, height: '100%', minHeight: 520, marginHorizontal: 0 },
   map: { flex: 1 },
   mapLoader: { marginTop: 100 },
+  listPane: { flex: 1 },
+  listPaneDesktop: {
+    flex: 0.9,
+    maxWidth: 420,
+    borderRadius: 18,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(248,250,252,0.9)',
+  },
   list: { padding: 20, paddingTop: 12, paddingBottom: 40 },
   listOverlay: { flex: 1 },
   empty: { textAlign: 'center', marginTop: 40 },
