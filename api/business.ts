@@ -156,16 +156,17 @@ export const addService = async (
 };
 
 export type ServiceWritePayload = {
-  name: string;
-  price_amount: number;
+  name?: string;
+  price_amount?: number;
   price_amount_eur?: number | null;
-  duration_minutes: number;
+  duration_minutes?: number;
   description?: string | null;
   category_id?: string | null;
   promotional_price_amount?: number | null;
   promotional_price_amount_eur?: number | null;
   promotion_valid_until?: string | null;
   price_is_indicative?: boolean;
+  is_active?: boolean;
   options?: Array<{
     id?: string;
     name: string;

@@ -1,12 +1,13 @@
 import { Alert, Platform } from "react-native";
 
-export function notify(title: string, message?: string) {
+export function notify(title: string, message?: string, onDismiss?: () => void) {
   const text = message ? `${title}\n\n${message}` : title;
   if (Platform.OS === "web" && typeof window !== "undefined") {
     window.alert(text);
+    onDismiss?.();
     return;
   }
-  Alert.alert(title, message);
+  Alert.alert(title, message, [{ text: "OK", onPress: onDismiss }]);
 }
 
 /** Human message from axios/DRF errors — never dump raw HTML 500 pages. */

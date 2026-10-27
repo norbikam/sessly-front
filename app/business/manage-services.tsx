@@ -1,25 +1,28 @@
 import React, { useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Platform, ScrollView,
+  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, ScrollView, Switch, Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { router, useFocusEffect } from 'expo-router';
-import { deleteService, getMyServices, getServiceCategories } from '../../api/business';
+import { deleteService, getMyServices, getServiceCategories, updateService } from '../../api/business';
 import { Service, ServiceCategory } from '../../types/api';
 import Colors from '../../constants/Colors';
 import { useLocale } from '../../contexts/LocaleContext';
 import { useLocation } from '../../contexts/LocationContext';
 import { formatServicePrice } from '../../utils/currency';
+import { goBackToApp } from '../../utils/navigation';
+import { formatApiError, notify } from '../../utils/notify';
 import { localizedName } from '../../utils/localized';
 
 export default function ManageServicesScreen() {
   const { activeLocation } = useLocation();
-  const { currency, language } = useLocale();
+  const { currency, language, t } = useLocale();
   const businessSlug = activeLocation?.slug;
   const [services, setServices] = useState<Service[]>([]);
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
   const [loading, setLoading] = useState(true);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     if (!businessSlug) {
@@ -36,6 +39,7 @@ export default function ManageServicesScreen() {
       setServices(Array.isArray(data) ? data : []);
     } catch (e: any) {
       console.error('Błąd ładowania usług:', e?.response?.data || e.message);
+      notify('Błąd', 'Nie udało się wczytać cennika.');
     } finally {
       setLoading(false);
     }
@@ -48,19 +52,49 @@ export default function ManageServicesScreen() {
   );
 
   const confirmDelete = (id: string | number) => {
+    const run = async () => {
+      if (!businessSlug) return;
+      try {
+        await deleteService(businessSlug, String(id));
+        setServices((current) => current.filter((item) => String(item.id) !== String(id)));
+        notify('Usunięto', 'Usługa została usunięta z oferty.');
+      } catch (e: any) {
+        notify('Błąd', formatApiError(e, 'Nie udało się usunąć usługi.'));
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.confirm('Usunąć tę usługę z oferty?')) {
+        void run();
+      }
+      return;
+    }
     Alert.alert('Usuwanie', 'Czy na pewno chcesz usunąć tę usługę ze swojej oferty?', [
       { text: 'Anuluj', style: 'cancel' },
-      { text: 'Usuń', style: 'destructive', onPress: () => handleRemove(id) },
+      { text: 'Usuń', style: 'destructive', onPress: () => void run() },
     ]);
   };
 
-  const handleRemove = async (id: string | number) => {
+  const toggleActive = async (service: Service, nextActive: boolean) => {
     if (!businessSlug) return;
+    const id = String(service.id);
+    setTogglingId(id);
+    setServices((current) =>
+      current.map((item) =>
+        String(item.id) === id ? { ...item, is_active: nextActive } : item,
+      ),
+    );
     try {
-      await deleteService(businessSlug, String(id));
-      loadData();
-    } catch {
-      Alert.alert('Błąd', 'Nie udało się usunąć usługi.');
+      await updateService(businessSlug, id, { is_active: nextActive });
+    } catch (e: any) {
+      setServices((current) =>
+        current.map((item) =>
+          String(item.id) === id ? { ...item, is_active: !nextActive } : item,
+        ),
+      );
+      notify('Błąd', formatApiError(e, 'Nie udało się zmienić statusu usługi.'));
+    } finally {
+      setTogglingId(null);
     }
   };
 
@@ -82,7 +116,7 @@ export default function ManageServicesScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => goBackToApp(router)} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color={Colors.light.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Cennik i usługi</Text>
@@ -119,36 +153,56 @@ export default function ManageServicesScreen() {
                 <Text style={styles.groupTitle}>{group.name}</Text>
                 <Text style={styles.groupCount}>{group.services.length}</Text>
               </View>
-              {group.services.map((item) => (
-                <View key={String(item.id)} style={styles.serviceItem}>
-                  <View style={styles.serviceIconContainer}>
-                    {item.image_url ? (
-                      <Image source={{ uri: item.image_url }} style={styles.serviceImage} contentFit="cover" />
-                    ) : (
-                      <Ionicons name="cut-outline" size={20} color={Colors.light.accent} />
-                    )}
-                  </View>
-                  <View style={styles.serviceInfo}>
-                    <Text style={styles.serviceName}>{localizedName(item, language)}</Text>
-                    <View style={styles.serviceMeta}>
-                      <Text style={styles.serviceMetaText}>{item.duration_minutes} min</Text>
-                      <View style={styles.dot} />
-                      <Text style={styles.serviceMetaTextBold}>
-                        {formatServicePrice(item, currency)}
-                      </Text>
-                    </View>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.editBtn}
-                    onPress={() => router.push({ pathname: '/business/service-form', params: { id: String(item.id) } } as any)}
+              {group.services.map((item) => {
+                const inactive = item.is_active === false;
+                return (
+                  <View
+                    key={String(item.id)}
+                    style={[styles.serviceItem, inactive && styles.serviceItemInactive]}
                   >
-                    <Ionicons name="create-outline" size={20} color={Colors.light.accent} />
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.deleteBtn} onPress={() => confirmDelete(item.id)}>
-                    <Ionicons name="trash-outline" size={20} color="#EF4444" />
-                  </TouchableOpacity>
-                </View>
-              ))}
+                    <View style={styles.serviceIconContainer}>
+                      {item.image_url ? (
+                        <Image source={{ uri: item.image_url }} style={styles.serviceImage} contentFit="cover" />
+                      ) : (
+                        <Ionicons name="cut-outline" size={20} color={Colors.light.accent} />
+                      )}
+                    </View>
+                    <View style={styles.serviceInfo}>
+                      <Text style={[styles.serviceName, inactive && styles.inactiveText]}>
+                        {localizedName(item, language)}
+                      </Text>
+                      <View style={styles.serviceMeta}>
+                        <Text style={styles.serviceMetaText}>{item.duration_minutes} min</Text>
+                        <View style={styles.dot} />
+                        <Text style={styles.serviceMetaTextBold}>
+                          {formatServicePrice(item, currency)}
+                        </Text>
+                      </View>
+                      <View style={styles.activeRow}>
+                        <Text style={styles.activeLabel}>
+                          {inactive ? t('services.inactive') : t('services.active')}
+                        </Text>
+                        <Switch
+                          value={!inactive}
+                          disabled={togglingId === String(item.id)}
+                          onValueChange={(value) => void toggleActive(item, value)}
+                          trackColor={{ false: '#CBD5E1', true: '#C4B5FD' }}
+                          thumbColor={!inactive ? Colors.light.accent : '#f4f3f4'}
+                        />
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.editBtn}
+                      onPress={() => router.push({ pathname: '/business/service-form', params: { id: String(item.id) } } as any)}
+                    >
+                      <Ionicons name="create-outline" size={20} color={Colors.light.accent} />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.deleteBtn} onPress={() => confirmDelete(item.id)}>
+                      <Ionicons name="trash-outline" size={20} color="#EF4444" />
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
             </View>
           ))
         )}
@@ -184,6 +238,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff', padding: 16, borderRadius: 16, marginBottom: 12,
     flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#F1F5F9',
   },
+  serviceItemInactive: { opacity: 0.72, backgroundColor: '#F8FAFC' },
   serviceIconContainer: {
     width: 44, height: 44, borderRadius: 12, backgroundColor: '#F5F3FF',
     justifyContent: 'center', alignItems: 'center', marginRight: 14,
@@ -196,9 +251,12 @@ const styles = StyleSheet.create({
   groupCount: { color: '#94A3B8', fontSize: 12, marginLeft: 7 },
   serviceInfo: { flex: 1, paddingRight: 10 },
   serviceName: { fontSize: 16, fontWeight: '700', color: Colors.light.text, marginBottom: 4 },
+  inactiveText: { color: '#64748B' },
   serviceMeta: { flexDirection: 'row', alignItems: 'center' },
   serviceMetaText: { color: Colors.light.textSecondary, fontSize: 13, fontWeight: '500' },
   serviceMetaTextBold: { color: Colors.light.text, fontSize: 13, fontWeight: '700' },
+  activeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
+  activeLabel: { fontSize: 12, fontWeight: '700', color: '#64748B', textTransform: 'uppercase' },
   dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: '#CBD5E1', marginHorizontal: 8 },
   deleteBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#FEF2F2', justifyContent: 'center', alignItems: 'center' },
   editBtn: { width: 40, height: 40, marginRight: 8, borderRadius: 12, backgroundColor: '#F5F3FF', justifyContent: 'center', alignItems: 'center' },

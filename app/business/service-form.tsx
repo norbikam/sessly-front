@@ -20,7 +20,7 @@ import Colors from '../../constants/Colors';
 import { useLocale } from '../../contexts/LocaleContext';
 import { useLocation } from '../../contexts/LocationContext';
 import { convertCurrency, resolveDualPrices } from '../../utils/currency';
-import { formatApiError } from '../../utils/notify';
+import { formatApiError, notify } from '../../utils/notify';
 import { goBackToApp } from '../../utils/navigation';
 
 const parseOptionalAmount = (value: string) => {
@@ -69,6 +69,7 @@ export default function ServiceFormScreen() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | undefined>();
   const [imageAsset, setImageAsset] = useState<UploadAsset | null>(null);
   const [showPromoCalendar, setShowPromoCalendar] = useState(false);
+  const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [priceIsIndicative, setPriceIsIndicative] = useState(false);
   const [options, setOptions] = useState<OptionDraft[]>([]);
 
@@ -251,20 +252,29 @@ export default function ServiceFormScreen() {
       } else {
         await uploadService(businessSlug, serviceData, imageAsset || undefined);
       }
-      Alert.alert('Sukces', editingId ? 'Zmiany usługi zostały zapisane.' : 'Usługa została dodana.', [
-        { text: 'OK', onPress: () => goBackToApp(router) },
-      ]);
+      const successTitle = 'Sukces';
+      const successMessage = editingId
+        ? 'Zmiany usługi zostały zapisane.'
+        : 'Usługa została dodana do cennika.';
+      notify(successTitle, successMessage, () => {
+        router.replace('/business/manage-services' as any);
+      });
     } catch (e: any) {
-      Alert.alert('Nie udało się zapisać usługi', formatApiError(e));
+      notify('Nie udało się zapisać usługi', formatApiError(e));
     } finally {
       setSubmitting(false);
     }
   };
 
+  const selectedCategory = categories.find((item) => item.id === selectedCategoryId);
+
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => goBackToApp(router)} style={styles.backBtn}>
+        <TouchableOpacity
+          onPress={() => goBackToApp(router, '/business/manage-services')}
+          style={styles.backBtn}
+        >
           <Ionicons name="arrow-back" size={24} color={Colors.light.text} />
         </TouchableOpacity>
         <Text style={styles.title}>{editingId ? t('service.form.edit') : t('service.form.new')}</Text>
@@ -294,23 +304,21 @@ export default function ServiceFormScreen() {
             </View>
 
             <Text style={styles.inputLabel}>{t('service.form.category')}</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.selectorList}>
-              <TouchableOpacity
-                style={[styles.selectorChip, !selectedCategoryId && styles.selectorChipActive]}
-                onPress={() => setSelectedCategoryId(undefined)}
-              >
-                <Text style={[styles.selectorText, !selectedCategoryId && styles.selectorTextActive]}>{t('service.form.noCategory')}</Text>
-              </TouchableOpacity>
-              {categories.map((category) => (
-                <TouchableOpacity
-                  key={category.id}
-                  style={[styles.selectorChip, selectedCategoryId === category.id && styles.selectorChipActive]}
-                  onPress={() => setSelectedCategoryId(category.id)}
-                >
-                  <Text style={[styles.selectorText, selectedCategoryId === category.id && styles.selectorTextActive]}>{category.name}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            <TouchableOpacity style={styles.categorySelect} onPress={() => setShowCategoryPicker(true)}>
+              <View style={styles.categorySelectLeft}>
+                <View
+                  style={[
+                    styles.categoryDot,
+                    { backgroundColor: selectedCategory?.color || '#94A3B8' },
+                  ]}
+                />
+                <Text style={styles.categorySelectText}>
+                  {selectedCategory?.name || t('service.form.noCategory')}
+                </Text>
+              </View>
+              <Ionicons name="chevron-down" size={18} color="#64748B" />
+            </TouchableOpacity>
+            <Text style={styles.hint}>{t('service.form.categoryHint')}</Text>
 
             <Text style={styles.inputLabel}>{t('service.form.image')}</Text>
             <TouchableOpacity style={styles.imagePicker} onPress={handlePickImage}>
@@ -480,6 +488,59 @@ export default function ServiceFormScreen() {
         </ScrollView>
       )}
 
+      {showCategoryPicker ? (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setShowCategoryPicker(false)}>
+          <View style={styles.calendarOverlay}>
+            <View style={styles.calendarCard}>
+              <View style={styles.calendarHeader}>
+                <Text style={styles.calendarTitle}>{t('service.form.category')}</Text>
+                <TouchableOpacity onPress={() => setShowCategoryPicker(false)}>
+                  <Ionicons name="close" size={24} color={Colors.light.text} />
+                </TouchableOpacity>
+              </View>
+              <TouchableOpacity
+                style={[styles.categoryOption, !selectedCategoryId && styles.categoryOptionActive]}
+                onPress={() => {
+                  setSelectedCategoryId(undefined);
+                  setShowCategoryPicker(false);
+                }}
+              >
+                <View style={[styles.categoryDot, { backgroundColor: '#94A3B8' }]} />
+                <Text style={styles.categoryOptionText}>{t('service.form.noCategory')}</Text>
+                {!selectedCategoryId ? <Ionicons name="checkmark" size={20} color={Colors.light.accent} /> : null}
+              </TouchableOpacity>
+              {categories.map((category) => {
+                const active = selectedCategoryId === category.id;
+                return (
+                  <TouchableOpacity
+                    key={category.id}
+                    style={[styles.categoryOption, active && styles.categoryOptionActive]}
+                    onPress={() => {
+                      setSelectedCategoryId(category.id);
+                      setShowCategoryPicker(false);
+                    }}
+                  >
+                    <View style={[styles.categoryDot, { backgroundColor: category.color || '#94A3B8' }]} />
+                    <Text style={styles.categoryOptionText}>{category.name}</Text>
+                    {active ? <Ionicons name="checkmark" size={20} color={Colors.light.accent} /> : null}
+                  </TouchableOpacity>
+                );
+              })}
+              <TouchableOpacity
+                style={styles.manageCategoriesBtn}
+                onPress={() => {
+                  setShowCategoryPicker(false);
+                  router.push('/business/categories' as any);
+                }}
+              >
+                <Ionicons name="pricetags-outline" size={18} color={Colors.light.accent} />
+                <Text style={styles.manageCategoriesText}>{t('service.form.manageCategories')}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      ) : null}
+
       {showPromoCalendar ? (
         <Modal visible transparent animationType="fade" onRequestClose={() => setShowPromoCalendar(false)}>
           <View style={styles.calendarOverlay}>
@@ -535,11 +596,24 @@ const styles = StyleSheet.create({
     color: Colors.light.text, borderWidth: 1, borderColor: 'transparent',
   },
   textArea: { height: 96, paddingTop: 12, paddingBottom: 12 },
-  selectorList: { gap: 8, paddingBottom: 16 },
-  selectorChip: { paddingHorizontal: 13, paddingVertical: 9, borderRadius: 18, backgroundColor: '#F1F5F9' },
-  selectorChipActive: { backgroundColor: '#EDE9FE', borderWidth: 1, borderColor: Colors.light.accent },
-  selectorText: { color: '#64748B', fontSize: 13, fontWeight: '700' },
-  selectorTextActive: { color: Colors.light.accent },
+  categorySelect: {
+    height: 50, borderRadius: 14, backgroundColor: '#F1F5F9', paddingHorizontal: 14,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6,
+  },
+  categorySelectLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 },
+  categoryDot: { width: 12, height: 12, borderRadius: 6 },
+  categorySelectText: { fontSize: 15, fontWeight: '700', color: Colors.light.text },
+  categoryOption: {
+    flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 10,
+    borderRadius: 12, marginBottom: 6,
+  },
+  categoryOptionActive: { backgroundColor: '#F5F3FF' },
+  categoryOptionText: { flex: 1, fontSize: 15, fontWeight: '700', color: Colors.light.text },
+  manageCategoriesBtn: {
+    marginTop: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    height: 44, borderRadius: 12, backgroundColor: '#EDE9FE',
+  },
+  manageCategoriesText: { color: Colors.light.accent, fontWeight: '800' },
   imagePicker: {
     height: 100, marginBottom: 12, borderRadius: 14, borderStyle: 'dashed', borderWidth: 1,
     borderColor: '#C4B5FD', backgroundColor: '#FAF5FF', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
