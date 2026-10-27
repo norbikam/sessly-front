@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Colors from '../../constants/Colors';
+import { CUSTOMER_DEPOSITS_ENABLED } from '../../constants/config';
 import type { Appointment } from '../../types/api';
 
 export const getStatusInfo = (status: string) => {
@@ -82,6 +83,7 @@ export default function AppointmentCard({
     Boolean(appointment.change_blocked_reason);
 
   const needsDeposit =
+    CUSTOMER_DEPOSITS_ENABLED &&
     appointment.deposit_status === 'pending' &&
     appointment.deposit_amount != null &&
     Number(appointment.deposit_amount) > 0;
@@ -154,7 +156,7 @@ export default function AppointmentCard({
         </TouchableOpacity>
       ) : null}
 
-      {appointment.deposit_status === 'paid' ? (
+      {CUSTOMER_DEPOSITS_ENABLED && appointment.deposit_status === 'paid' ? (
         <Text style={styles.paidHint}>Zaliczka opłacona</Text>
       ) : null}
 

@@ -85,7 +85,7 @@ export default function AddLocationScreen() {
       await refreshLocations();
       if (created?.id) await selectLocation(String(created.id));
       notify('Miejsce dodane', created.name);
-      router.replace('/business' as any);
+      router.replace('/(tabs)' as any);
     } catch (error: any) {
       Alert.alert('Nie udało się dodać miejsca', error?.response?.data ? JSON.stringify(error.response.data) : error?.message);
     } finally {

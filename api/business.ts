@@ -228,6 +228,15 @@ export const addServiceCategory = async (
   return response.data;
 };
 
+export const updateServiceCategory = async (
+  slug: string,
+  id: string,
+  data: Partial<Pick<ServiceCategory, 'name' | 'color' | 'sort_order'>>,
+): Promise<ServiceCategory> => {
+  const response = await apiClient.patch(`/businesses/${slug}/service-categories/${id}/`, data);
+  return response.data;
+};
+
 export const deleteServiceCategory = async (slug: string, id: string): Promise<void> => {
   await apiClient.delete(`/businesses/${slug}/service-categories/${id}/`);
 };

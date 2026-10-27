@@ -9,7 +9,9 @@ import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import apiClient from '../../api/client';
 import Colors from '../../constants/Colors';
+import { CUSTOMER_DEPOSITS_ENABLED } from '../../constants/config';
 import { lookupBusinessRegistry, updateBusinessProfile, UploadAsset } from '../../api/business';
+import { goBackToApp } from '../../utils/navigation';
 import { notify } from '../../utils/notify';
 import { useLocation } from '../../contexts/LocationContext';
 
@@ -54,8 +56,8 @@ export default function EditBusinessProfileScreen() {
       }
 
       if (!Array.isArray(data) || data.length === 0) {
-        Alert.alert('Błąd', 'Do Twojego konta nie jest przypisany żaden salon.');
-        router.back();
+        notify('Błąd', 'Do Twojego konta nie jest przypisany żaden salon.');
+        goBackToApp(router);
         return;
       }
 
@@ -148,12 +150,7 @@ export default function EditBusinessProfileScreen() {
     try {
       setSaving(true);
       
-      const depositValue = Math.min(
-        100,
-        Math.max(0, Number(String(depositPercent).replace(',', '.')) || 0)
-      );
-
-      const payload = {
+      const payload: Record<string, unknown> = {
         name: name.trim(),
         description: description.trim(),
         phone_number: phone.trim(),
@@ -163,13 +160,20 @@ export default function EditBusinessProfileScreen() {
         address_line1: address.trim(),
         city: city.trim(),
         postal_code: postalCode.trim(),
-        deposit_percent: depositValue,
       };
+      if (CUSTOMER_DEPOSITS_ENABLED) {
+        payload.deposit_percent = Math.min(
+          100,
+          Math.max(0, Number(String(depositPercent).replace(',', '.')) || 0)
+        );
+      } else {
+        payload.deposit_percent = 0;
+      }
 
       await updateBusinessProfile(businessId, payload, logoAsset);
 
       notify('Sukces!', 'Wizytówka Twojego salonu została pomyślnie zaktualizowana.');
-      router.back();
+      goBackToApp(router);
     } catch (e: any) {
       console.error('Błąd zapisu:', e?.response?.data || e);
       notify(
@@ -193,7 +197,7 @@ export default function EditBusinessProfileScreen() {
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => goBackToApp(router)} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color={Colors.light.text} />
         </TouchableOpacity>
         <Text style={styles.title}>Edytuj Wizytówkę</Text>
@@ -252,17 +256,26 @@ export default function EditBusinessProfileScreen() {
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.inputLabel}>Zaliczka przy rezerwacji (%)</Text>
-          <TextInput
-            style={styles.input}
-            value={depositPercent}
-            onChangeText={setDepositPercent}
-            keyboardType="decimal-pad"
-            placeholder="0 = wyłączone, np. 30"
-          />
-          <Text style={styles.hint}>
-            Klient płaci ten procent ceny usługi po rezerwacji. 0 wyłącza zaliczki.
-          </Text>
+          {CUSTOMER_DEPOSITS_ENABLED ? (
+            <>
+              <Text style={styles.inputLabel}>Zaliczka przy rezerwacji (%)</Text>
+              <TextInput
+                style={styles.input}
+                value={depositPercent}
+                onChangeText={setDepositPercent}
+                keyboardType="decimal-pad"
+                placeholder="0 = wyłączone, np. 30"
+              />
+              <Text style={styles.hint}>
+                Klient płaci ten procent ceny usługi po rezerwacji. 0 wyłącza zaliczki.
+              </Text>
+            </>
+          ) : (
+            <Text style={styles.hint}>
+              Zaliczki od klientów są wyłączone (wrócą po ustaleniu rozliczeń B2B).
+              Rozliczasz się subskrypcją za lokalizację.
+            </Text>
+          )}
         </View>
 
         <View style={styles.formCard}>

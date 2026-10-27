@@ -14,21 +14,13 @@ import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 
 import { getBusinesses } from '../../api/business';
+import { OsmMapView } from '../../components/OsmMapView';
 import { useThemeColor } from '../../hooks/useThemeColor';
 import { Business } from '../../types/api';
 import { notify } from '../../utils/notify';
 import Colors from '../../constants/Colors';
 
 type Coordinates = { latitude: number; longitude: number };
-
-let MapView: any = null;
-let Marker: any = null;
-if (Platform.OS !== 'web') {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const maps = require('react-native-maps');
-  MapView = maps.default;
-  Marker = maps.Marker;
-}
 
 function distanceKm(origin: Coordinates, business: Business): number | null {
   if (business.latitude == null || business.longitude == null) return null;
@@ -42,6 +34,35 @@ function distanceKm(origin: Coordinates, business: Business): number | null {
       Math.cos(radians(Number(business.latitude))) *
       Math.sin(longitudeDelta / 2) ** 2;
   return earthRadius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function openFreeDirections(business: Business) {
+  const hasCoords = business.latitude != null && business.longitude != null;
+  const lat = hasCoords ? Number(business.latitude) : null;
+  const lng = hasCoords ? Number(business.longitude) : null;
+  const label = encodeURIComponent(
+    `${business.name}, ${business.address_line1 || ''}, ${business.city || ''}`.trim()
+  );
+
+  if (Platform.OS === 'ios' && lat != null && lng != null) {
+    void Linking.openURL(`http://maps.apple.com/?daddr=${lat},${lng}&q=${label}`);
+    return;
+  }
+  if (Platform.OS === 'android' && lat != null && lng != null) {
+    void Linking.openURL(`geo:${lat},${lng}?q=${lat},${lng}(${label})`);
+    return;
+  }
+  if (lat != null && lng != null) {
+    void Linking.openURL(
+      `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=16/${lat}/${lng}`
+    );
+    return;
+  }
+  void Linking.openURL(
+    `https://www.openstreetmap.org/search?query=${encodeURIComponent(
+      `${business.address_line1}, ${business.city}`
+    )}`
+  );
 }
 
 export default function MapScreen() {
@@ -125,36 +146,22 @@ export default function MapScreen() {
     router.push({ pathname: '/business/[id]', params: { id: business.slug || business.id } });
   };
 
-  const openDirections = (business: Business) => {
-    const query =
-      business.latitude != null && business.longitude != null
-        ? `${business.latitude},${business.longitude}`
-        : `${business.address_line1}, ${business.city}`;
-    void Linking.openURL(
-      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
-    );
-  };
-
-  const initialRegion = position
-    ? {
-        latitude: position.latitude,
-        longitude: position.longitude,
-        latitudeDelta: 0.08,
-        longitudeDelta: 0.08,
-      }
+  const mapCenter = position
+    ? position
     : mappable[0]
       ? {
           latitude: Number(mappable[0].business.latitude),
           longitude: Number(mappable[0].business.longitude),
-          latitudeDelta: 0.12,
-          longitudeDelta: 0.12,
         }
-      : {
-          latitude: 52.2297,
-          longitude: 21.0122,
-          latitudeDelta: 0.2,
-          longitudeDelta: 0.2,
-        };
+      : { latitude: 52.2297, longitude: 21.0122 };
+
+  const markers = mappable.map(({ business }) => ({
+    id: business.id,
+    latitude: Number(business.latitude),
+    longitude: Number(business.longitude),
+    title: business.name,
+    selected: selectedId === business.id,
+  }));
 
   return (
     <View style={[styles.container, { backgroundColor }]}>
@@ -163,8 +170,8 @@ export default function MapScreen() {
           <Text style={[styles.title, { color: textColor }]}>Mapa</Text>
           <Text style={[styles.subtitle, { color: muted }]}>
             {position
-              ? `W okolicy do ${radiusKm} km`
-              : 'Włącz lokalizację lub przeglądaj pinezki'}
+              ? `W okolicy do ${radiusKm} km · OpenStreetMap`
+              : 'OpenStreetMap · włącz lokalizację lub przeglądaj listę'}
           </Text>
         </View>
         <TouchableOpacity style={styles.locationButton} onPress={locate} disabled={locating}>
@@ -203,72 +210,59 @@ export default function MapScreen() {
         </View>
       ) : null}
 
-      {Platform.OS !== 'web' && MapView ? (
-        <View style={styles.mapWrap}>
-          {loading ? (
-            <ActivityIndicator style={styles.mapLoader} color={Colors.accent} />
-          ) : (
-            <MapView style={styles.map} initialRegion={initialRegion} showsUserLocation={Boolean(position)}>
-              {mappable.map(({ business }) => (
-                <Marker
-                  key={business.id}
-                  coordinate={{
-                    latitude: Number(business.latitude),
-                    longitude: Number(business.longitude),
-                  }}
-                  title={business.name}
-                  description={business.city}
-                  pinColor={selectedId === business.id ? '#059669' : Colors.accent}
-                  onPress={() => setSelectedId(business.id)}
-                />
-              ))}
-            </MapView>
-          )}
-        </View>
-      ) : null}
+      <View style={styles.mapWrap}>
+        {loading ? (
+          <ActivityIndicator style={styles.mapLoader} color={Colors.accent} />
+        ) : (
+          <OsmMapView
+            style={styles.map}
+            center={mapCenter}
+            zoom={position ? 12 : 11}
+            markers={markers}
+            userLocation={position}
+            onMarkerPress={(id) => setSelectedId(id)}
+          />
+        )}
+      </View>
 
-      {loading && Platform.OS === 'web' ? (
-        <ActivityIndicator style={styles.loader} color={Colors.accent} />
-      ) : (
-        <FlatList
-          data={nearby}
-          keyExtractor={({ business }) => business.id}
-          contentContainerStyle={styles.list}
-          style={Platform.OS === 'web' ? undefined : styles.listOverlay}
-          ListEmptyComponent={
-            <Text style={[styles.empty, { color: muted }]}>
-              Brak firm w tym obszarze.
-            </Text>
-          }
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={[
-                styles.card,
-                { backgroundColor: cardColor },
-                selectedId === item.business.id && styles.cardSelected,
-              ]}
-              onPress={() => openBusiness(item.business)}
-              onLongPress={() => openDirections(item.business)}
-            >
-              <View style={styles.pin}>
-                <Ionicons name="location" size={24} color={Colors.accent} />
-              </View>
-              <View style={styles.content}>
-                <Text style={[styles.businessName, { color: textColor }]}>
-                  {item.business.name}
-                </Text>
-                <Text style={[styles.address, { color: muted }]}>
-                  {item.business.address_line1}, {item.business.city}
-                </Text>
-              </View>
-              {item.distance != null ? (
-                <Text style={styles.distance}>{item.distance.toFixed(1)} km</Text>
-              ) : null}
-              <Ionicons name="chevron-forward" size={18} color={Colors.accent} />
-            </TouchableOpacity>
-          )}
-        />
-      )}
+      <FlatList
+        data={nearby}
+        keyExtractor={({ business }) => business.id}
+        contentContainerStyle={styles.list}
+        style={styles.listOverlay}
+        ListEmptyComponent={
+          <Text style={[styles.empty, { color: muted }]}>
+            Brak firm w tym obszarze.
+          </Text>
+        }
+        renderItem={({ item }) => (
+          <TouchableOpacity
+            style={[
+              styles.card,
+              { backgroundColor: cardColor },
+              selectedId === item.business.id && styles.cardSelected,
+            ]}
+            onPress={() => openBusiness(item.business)}
+            onLongPress={() => openFreeDirections(item.business)}
+          >
+            <View style={styles.pin}>
+              <Ionicons name="location" size={24} color={Colors.accent} />
+            </View>
+            <View style={styles.content}>
+              <Text style={[styles.businessName, { color: textColor }]}>
+                {item.business.name}
+              </Text>
+              <Text style={[styles.address, { color: muted }]}>
+                {item.business.address_line1}, {item.business.city}
+              </Text>
+            </View>
+            {item.distance != null ? (
+              <Text style={styles.distance}>{item.distance.toFixed(1)} km</Text>
+            ) : null}
+            <Ionicons name="chevron-forward" size={18} color={Colors.accent} />
+          </TouchableOpacity>
+        )}
+      />
     </View>
   );
 }
@@ -312,7 +306,6 @@ const styles = StyleSheet.create({
   mapWrap: { height: 280, marginHorizontal: 16, borderRadius: 18, overflow: 'hidden' },
   map: { flex: 1 },
   mapLoader: { marginTop: 100 },
-  loader: { marginTop: 60 },
   list: { padding: 20, paddingTop: 12, paddingBottom: 40 },
   listOverlay: { flex: 1 },
   empty: { textAlign: 'center', marginTop: 40 },

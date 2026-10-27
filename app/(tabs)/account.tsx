@@ -155,7 +155,7 @@ export default function AccountScreen() {
               <Text style={styles.sectionTitle}>{t('account.manageBusiness')}</Text>
               <LocationSwitcher />
               <View style={styles.businessGrid}>
-                <TouchableOpacity style={styles.bCard} onPress={() => router.push('/business' as any)}>
+                <TouchableOpacity style={styles.bCard} onPress={() => router.push('/(tabs)' as any)}>
                   <View style={[styles.bIcon, {backgroundColor: '#EDE9FE'}]}><Ionicons name="grid" size={24} color="#7C3AED" /></View>
                   <Text style={styles.bText}>Pulpit</Text>
                 </TouchableOpacity>

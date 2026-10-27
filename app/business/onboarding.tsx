@@ -134,7 +134,7 @@ export default function BusinessOnboardingScreen() {
       await apiClient.patch(`/businesses/my-business/${business.id}/`, { is_active: true });
       await refreshLocations();
       notify('Gotowe', 'Lokal jest widoczny dla klientów.');
-      router.replace('/business' as any);
+      router.replace('/(tabs)' as any);
     } catch (e: any) {
       Alert.alert('Błąd', e?.response?.data?.detail || 'Nie udało się aktywować lokalu.');
     } finally {

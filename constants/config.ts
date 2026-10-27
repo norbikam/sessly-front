@@ -26,5 +26,13 @@ export const PHONE_VERIFY_ENABLED =
     process.env.EXPO_PUBLIC_PHONE_VERIFY_ENABLED ?? extra.phoneVerifyEnabled ?? 'false'
   ).toLowerCase() === 'true';
 
+/** Customer deposit checkout — off until B2B legal/accounting is ready. */
+export const CUSTOMER_DEPOSITS_ENABLED =
+  String(
+    process.env.EXPO_PUBLIC_CUSTOMER_DEPOSITS_ENABLED ??
+      extra.customerDepositsEnabled ??
+      'false'
+  ).toLowerCase() === 'true';
+
 export const APP_STORE_SUPPORT_URL =
   process.env.EXPO_PUBLIC_SUPPORT_URL || `mailto:${SUPPORT_EMAIL}`;

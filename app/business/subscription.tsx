@@ -7,57 +7,79 @@ import {
   ActivityIndicator,
   Platform,
   ScrollView,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import Colors from '../../constants/Colors';
-import { getMySubscription, BusinessSubscription } from '../../api/payments';
+import {
+  getMyLocationSubscriptions,
+  getSubscriptionCatalog,
+  LocationSubscription,
+  SubscriptionCatalog,
+} from '../../api/payments';
 import apiClient from '../../api/client';
+import {
+  hasRevenueCatKey,
+  isStoreBillingAvailable,
+  purchaseLocationSubscription,
+  restoreLocationPurchases,
+} from '../../utils/purchases';
 
-const PLAN_COPY: Record<
-  string,
-  { title: string; price: string; features: string[] }
-> = {
-  free: {
-    title: 'Free',
-    price: '0 zł / mc',
-    features: ['1 lokal', 'Podstawowy grafik', 'Powiadomienia e-mail'],
-  },
-  starter: {
-    title: 'Starter',
-    price: '79 zł / mc',
-    features: ['Do 3 lokalizacji', 'Zaliczki Stripe', 'Przypomnienia push'],
-  },
-  pro: {
-    title: 'Pro',
-    price: '149 zł / mc',
-    features: ['Bez limitu lokalizacji', 'Priorytetowe wsparcie', 'Google Calendar'],
-  },
+const STATUS_PL: Record<string, string> = {
+  trialing: 'Okres próbny',
+  active: 'Aktywna',
+  past_due: 'Zaległość',
+  cancelled: 'Anulowana',
+  expired: 'Wygasła',
 };
+
+function formatDate(value?: string | null) {
+  if (!value) return '—';
+  try {
+    return new Date(value).toLocaleDateString('pl-PL');
+  } catch {
+    return value;
+  }
+}
+
+function notify(title: string, message: string) {
+  if (Platform.OS === 'web') {
+    window.alert(`${title}\n${message}`);
+  } else {
+    Alert.alert(title, message);
+  }
+}
 
 export default function BusinessSubscriptionScreen() {
   const [loading, setLoading] = useState(true);
-  const [sub, setSub] = useState<BusinessSubscription | null>(null);
+  const [subs, setSubs] = useState<LocationSubscription[]>([]);
+  const [catalog, setCatalog] = useState<SubscriptionCatalog | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [verification, setVerification] = useState<string | null>(null);
   const [requestingVerify, setRequestingVerify] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const storeReady = isStoreBillingAvailable() && hasRevenueCatKey();
 
   const load = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const [subscription, verifyRes] = await Promise.all([
-        getMySubscription(),
+      const [locations, cat, verifyRes] = await Promise.all([
+        getMyLocationSubscriptions(),
+        getSubscriptionCatalog().catch(() => null),
         apiClient.get('/businesses/organization/verification/').catch(() => null),
       ]);
-      setSub(subscription);
+      setSubs(locations);
+      setCatalog(cat);
       const status =
         verifyRes?.data?.data?.verification_status ||
         verifyRes?.data?.verification_status ||
         null;
       setVerification(status);
     } catch {
-      setError('Nie udało się pobrać subskrypcji.');
+      setError('Nie udało się pobrać subskrypcji lokalizacji.');
     } finally {
       setLoading(false);
     }
@@ -83,6 +105,32 @@ export default function BusinessSubscriptionScreen() {
     }
   };
 
+  const onPurchase = async (sub: LocationSubscription) => {
+    try {
+      setBusyId(sub.business_id);
+      const result = await purchaseLocationSubscription(sub.business_id);
+      notify(result.ok ? 'Gotowe' : 'Płatność', result.message);
+      await load();
+    } catch (e: any) {
+      notify('Błąd', e?.message || 'Zakup nieudany');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const onRestore = async (sub: LocationSubscription) => {
+    try {
+      setBusyId(sub.business_id);
+      const result = await restoreLocationPurchases(sub.business_id);
+      notify(result.ok ? 'Przywrócono' : 'Restore', result.message);
+      await load();
+    } catch (e: any) {
+      notify('Błąd', e?.message || 'Restore nieudany');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   useEffect(() => {
     void load();
   }, [load]);
@@ -95,7 +143,10 @@ export default function BusinessSubscriptionScreen() {
     );
   }
 
-  const current = sub?.plan || 'free';
+  const price = catalog
+    ? `${catalog.monthly_price_amount} ${catalog.currency} / mc`
+    : '99 PLN / mc';
+  const trialDays = catalog?.trial_days ?? 90;
 
   return (
     <View style={styles.container}>
@@ -103,24 +154,27 @@ export default function BusinessSubscriptionScreen() {
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color={Colors.light.text} />
         </TouchableOpacity>
-        <Text style={styles.title}>Subskrypcja Sessly</Text>
+        <Text style={styles.title}>Subskrypcja lokalizacji</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <View style={styles.currentCard}>
-          <Text style={styles.currentLabel}>Twój plan</Text>
-          <Text style={styles.currentPlan}>
-            {(PLAN_COPY[current] || PLAN_COPY.free).title}
-          </Text>
-          <Text style={styles.currentStatus}>
-            Status: {sub?.status || 'trialing'}
-          </Text>
+          <Text style={styles.currentLabel}>Model rozliczeń</Text>
+          <Text style={styles.currentPlan}>{price}</Text>
+          <Text style={styles.currentStatus}>za każde miejsce (lokalizację)</Text>
           <Text style={styles.note}>
-            Checkout Stripe Billing podłączymy przy wdrożeniu płatności produkcyjnych.
-            Lokalnie startujesz na planie Free / trialing.
+            Start: {trialDays} dni (3 miesiące) bez opłat. Potem płatność przez App
+            Store / Google Play. Na webie status tylko podgląd — zakup w aplikacji
+            mobilnej.
           </Text>
+          {!storeReady && Platform.OS !== 'web' ? (
+            <Text style={styles.warn}>
+              Brak kluczy RevenueCat w tym buildzie — dodaj EXPO_PUBLIC_REVENUECAT_IOS_KEY /
+              ANDROID_KEY w EAS.
+            </Text>
+          ) : null}
         </View>
 
         <View style={styles.verifyCard}>
@@ -148,31 +202,85 @@ export default function BusinessSubscriptionScreen() {
           ) : null}
         </View>
 
-        {Object.entries(PLAN_COPY).map(([key, plan]) => {
-          const active = key === current;
-          return (
-            <View
-              key={key}
-              style={[styles.planCard, active && styles.planCardActive]}
-            >
-              <View style={styles.planHeader}>
-                <Text style={styles.planTitle}>{plan.title}</Text>
-                {active ? (
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeText}>Aktualny</Text>
+        <Text style={styles.section}>Twoje lokalizacje</Text>
+        {subs.length === 0 ? (
+          <Text style={styles.empty}>Brak lokalizacji — dodaj miejsce w panelu salonu.</Text>
+        ) : (
+          subs.map((sub) => {
+            const needsPay =
+              !sub.access_allowed ||
+              sub.status === 'expired' ||
+              sub.status === 'past_due' ||
+              sub.status === 'cancelled';
+            const busy = busyId === sub.business_id;
+            return (
+              <View
+                key={sub.id}
+                style={[
+                  styles.planCard,
+                  sub.access_allowed ? styles.planCardOk : styles.planCardWarn,
+                ]}
+              >
+                <View style={styles.planHeader}>
+                  <Text style={styles.planTitle}>{sub.business_name}</Text>
+                  <View
+                    style={[styles.badge, !sub.access_allowed && styles.badgeWarn]}
+                  >
+                    <Text
+                      style={[
+                        styles.badgeText,
+                        !sub.access_allowed && styles.badgeTextWarn,
+                      ]}
+                    >
+                      {STATUS_PL[sub.status] || sub.status}
+                    </Text>
+                  </View>
+                </View>
+                {sub.business_city ? (
+                  <Text style={styles.city}>{sub.business_city}</Text>
+                ) : null}
+                <Text style={styles.planPrice}>
+                  {sub.plan === 'complimentary'
+                    ? 'Complimentary (bez opłat)'
+                    : `${sub.monthly_price_amount} ${sub.currency} / mc`}
+                </Text>
+                <Text style={styles.meta}>Trial do: {formatDate(sub.trial_ends_at)}</Text>
+                <Text style={styles.meta}>
+                  Okres do: {formatDate(sub.current_period_end)}
+                </Text>
+
+                {Platform.OS !== 'web' && sub.plan !== 'complimentary' ? (
+                  <View style={styles.actions}>
+                    {needsPay || sub.status === 'trialing' ? (
+                      <TouchableOpacity
+                        style={[styles.buyBtn, (!storeReady || busy) && styles.btnDisabled]}
+                        disabled={!storeReady || busy}
+                        onPress={() => void onPurchase(sub)}
+                      >
+                        {busy ? (
+                          <ActivityIndicator color="#fff" />
+                        ) : (
+                          <Text style={styles.buyBtnText}>
+                            {sub.status === 'trialing'
+                              ? 'Przedłuż / wykup w sklepie'
+                              : 'Wykup subskrypcję'}
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    ) : null}
+                    <TouchableOpacity
+                      style={[styles.restoreBtn, (!storeReady || busy) && styles.btnDisabled]}
+                      disabled={!storeReady || busy}
+                      onPress={() => void onRestore(sub)}
+                    >
+                      <Text style={styles.restoreBtnText}>Przywróć zakup</Text>
+                    </TouchableOpacity>
                   </View>
                 ) : null}
               </View>
-              <Text style={styles.planPrice}>{plan.price}</Text>
-              {plan.features.map((f) => (
-                <View key={f} style={styles.featureRow}>
-                  <Ionicons name="checkmark-circle" size={18} color="#059669" />
-                  <Text style={styles.featureText}>{f}</Text>
-                </View>
-              ))}
-            </View>
-          );
-        })}
+            );
+          })
+        )}
       </ScrollView>
     </View>
   );
@@ -200,10 +308,16 @@ const styles = StyleSheet.create({
     padding: 20,
     marginBottom: 16,
   },
-  currentLabel: { color: '#9CA3AF', fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+  currentLabel: {
+    color: '#9CA3AF',
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
   currentPlan: { color: '#fff', fontSize: 28, fontWeight: '800', marginTop: 6 },
   currentStatus: { color: '#D1D5DB', marginTop: 6 },
   note: { color: '#9CA3AF', fontSize: 12, marginTop: 12, lineHeight: 18 },
+  warn: { color: '#FBBF24', fontSize: 12, marginTop: 10, lineHeight: 18 },
   verifyCard: {
     backgroundColor: '#fff',
     borderRadius: 18,
@@ -222,6 +336,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   verifyBtnText: { color: '#fff', fontWeight: '800' },
+  section: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#64748B',
+    textTransform: 'uppercase',
+    marginBottom: 10,
+  },
+  empty: { color: '#64748B', marginBottom: 12 },
   planCard: {
     backgroundColor: '#fff',
     borderRadius: 18,
@@ -230,19 +352,42 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E5E7EB',
   },
-  planCardActive: {
-    borderColor: Colors.light.accent,
+  planCardOk: { borderColor: '#A7F3D0' },
+  planCardWarn: { borderColor: '#FECACA' },
+  planHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
   },
-  planHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  planTitle: { fontSize: 18, fontWeight: '800', color: '#111' },
+  planTitle: { flex: 1, fontSize: 18, fontWeight: '800', color: '#111' },
+  city: { color: '#6B7280', marginTop: 4 },
   planPrice: { fontSize: 15, fontWeight: '600', color: '#4B5563', marginVertical: 8 },
+  meta: { color: '#6B7280', fontSize: 13, marginTop: 2 },
   badge: {
     backgroundColor: '#EEF2FF',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 999,
   },
+  badgeWarn: { backgroundColor: '#FEE2E2' },
   badgeText: { color: Colors.light.accent, fontWeight: '700', fontSize: 12 },
-  featureRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
-  featureText: { color: '#374151', fontSize: 14 },
+  badgeTextWarn: { color: '#B91C1C' },
+  actions: { marginTop: 14, gap: 8 },
+  buyBtn: {
+    backgroundColor: Colors.light.accent,
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  buyBtnText: { color: '#fff', fontWeight: '800' },
+  restoreBtn: {
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  restoreBtnText: { color: '#334155', fontWeight: '700' },
+  btnDisabled: { opacity: 0.5 },
 });

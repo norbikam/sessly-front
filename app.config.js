@@ -1,13 +1,8 @@
 /**
- * Dynamic Expo config — injects Maps + EAS project id from env at build time.
- * Source of truth for static fields remains app.json.
+ * Dynamic Expo config — EAS project id + RevenueCat keys (no Google Maps).
+ * Map tiles: OpenStreetMap via OsmMapView (free). Geocoding: Nominatim on API.
  */
 const appJson = require('./app.json');
-
-const googleMapsApiKey =
-  process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
-  process.env.GOOGLE_MAPS_API_KEY ||
-  '';
 
 const easProjectId =
   process.env.EXPO_PUBLIC_EAS_PROJECT_ID ||
@@ -24,44 +19,9 @@ module.exports = () => {
       ...(expo.extra?.eas || {}),
       projectId: easProjectId,
     },
-    googleMapsApiKey,
+    revenueCatIosKey: process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY || '',
+    revenueCatAndroidKey: process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY || '',
   };
-
-  if (googleMapsApiKey) {
-    expo.ios = {
-      ...(expo.ios || {}),
-      config: {
-        ...(expo.ios?.config || {}),
-        googleMapsApiKey,
-      },
-    };
-    expo.android = {
-      ...(expo.android || {}),
-      config: {
-        ...(expo.android?.config || {}),
-        googleMaps: {
-          apiKey: googleMapsApiKey,
-        },
-      },
-    };
-  }
-
-  const plugins = [...(expo.plugins || [])];
-  const mapsPluginIndex = plugins.findIndex(
-    (p) => p === 'react-native-maps' || (Array.isArray(p) && p[0] === 'react-native-maps')
-  );
-  if (googleMapsApiKey) {
-    const mapsPlugin = [
-      'react-native-maps',
-      {
-        iosGoogleMapsApiKey: googleMapsApiKey,
-        androidGoogleMapsApiKey: googleMapsApiKey,
-      },
-    ];
-    if (mapsPluginIndex >= 0) plugins[mapsPluginIndex] = mapsPlugin;
-    else plugins.push(mapsPlugin);
-  }
-  expo.plugins = plugins;
 
   return { expo };
 };

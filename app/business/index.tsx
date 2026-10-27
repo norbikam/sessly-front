@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
   RefreshControl,
   Platform,
 } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useSegments } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '@/contexts/AuthContext';
@@ -118,6 +118,7 @@ function StatCard({
 
 export default function BusinessDashboard() {
   const router = useRouter();
+  const segments = useSegments();
   const { user, logout } = useAuth();
   const { activeLocation } = useLocation();
   const [business, setBusiness] = useState<any>(null);
@@ -125,6 +126,13 @@ export default function BusinessDashboard() {
   const [stats, setStats] = useState<BusinessStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  // /business as a stack screen has no tab bar — bounce owners back into tabs.
+  useEffect(() => {
+    if (segments[0] === 'business' && segments.length === 1) {
+      router.replace('/(tabs)' as any);
+    }
+  }, [router, segments]);
 
   const loadData = useCallback(async () => {
     try {
