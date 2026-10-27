@@ -15,12 +15,17 @@ import { Notification } from '../../types/api';
 function iconForKind(kind: Notification['kind']): keyof typeof Ionicons.glyphMap {
   if (kind === 'promotion') return 'pricetag-outline';
   if (kind === 'appointment_new') return 'alert-circle-outline';
+  if (kind === 'appointment_cancelled') return 'close-circle-outline';
   return 'calendar-outline';
 }
 
 function openNotification(item: Notification) {
   if (item.kind === 'appointment_new') {
     router.push({ pathname: '/business/schedule', params: { filter: 'pending' } } as any);
+    return;
+  }
+  if (item.kind === 'appointment_cancelled') {
+    router.push({ pathname: '/business/schedule', params: { filter: 'cancelled' } } as any);
     return;
   }
   if (item.kind === 'promotion' && (item.business_slug || item.business_id)) {

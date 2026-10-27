@@ -122,6 +122,7 @@ export interface Notification {
     | 'appointment_1d'
     | 'appointment_2h'
     | 'appointment_new'
+    | 'appointment_cancelled'
     | 'promotion';
   title: string;
   body: string;
