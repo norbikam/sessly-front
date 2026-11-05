@@ -9,10 +9,12 @@ import {
   RefreshControl,
   Platform,
   Alert,
+  ScrollView,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
+import { useResponsive } from '../../hooks/useResponsive';
 import {
   getUserAppointments,
   cancelAppointment,
@@ -38,6 +40,7 @@ const FILTERS: { value: FilterType; label: string; icon: string }[] = [
 
 export default function AppointmentsScreen() {
   const router = useRouter();
+  const { isDesktopUp: isDesktop } = useResponsive();
   const { isLoggedIn } = useAuth();
   const { payment: paymentParam } = useLocalSearchParams<{ payment?: string }>();
 
@@ -346,62 +349,69 @@ export default function AppointmentsScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Twoje wizyty</Text>
-        <Text style={styles.headerSubtitle}>
-          {filteredAppointments.length} {filteredAppointments.length === 1 ? 'wizyta' : 'wizyt'}
-        </Text>
-      </View>
+      <View style={[styles.shell, isDesktop && styles.shellDesktop]}>
+        <View style={[styles.header, isDesktop && styles.headerDesktop]}>
+          <Text style={styles.headerTitle}>Twoje wizyty</Text>
+          <Text style={styles.headerSubtitle}>
+            {filteredAppointments.length} {filteredAppointments.length === 1 ? 'wizyta' : 'wizyt'}
+          </Text>
+        </View>
 
-      <View style={styles.filtersContainer}>
-        {FILTERS.map((f) => (
-          <TouchableOpacity
-            key={f.value}
-            style={[styles.filterChip, filter === f.value && styles.filterChipActive]}
-            onPress={() => setFilter(f.value)}
-          >
-            <Ionicons
-              name={f.icon as any}
-              size={16}
-              color={filter === f.value ? '#fff' : Colors.accent}
-            />
-            <Text
-              style={[styles.filterText, filter === f.value && styles.filterTextActive]}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filtersContainer}
+          style={styles.filtersScroll}
+        >
+          {FILTERS.map((f) => (
+            <TouchableOpacity
+              key={f.value}
+              style={[styles.filterChip, filter === f.value && styles.filterChipActive]}
+              onPress={() => setFilter(f.value)}
             >
-              {f.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+              <Ionicons
+                name={f.icon as any}
+                size={16}
+                color={filter === f.value ? '#fff' : Colors.accent}
+              />
+              <Text
+                style={[styles.filterText, filter === f.value && styles.filterTextActive]}
+              >
+                {f.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
 
-      <FlatList
-        data={filteredAppointments}
-        renderItem={({ item }) => (
-          <AppointmentCard
-            appointment={item}
-            onCancel={handleCancelAppointment}
-            onReschedule={setRescheduleTarget}
-            onAcceptProposal={handleAcceptProposal}
-            onDeclineProposal={handleDeclineProposal}
-            onPayDeposit={handlePayDeposit}
-            onBusinessPress={handleBusinessPress}
-          />
-        )}
-        keyExtractor={(item) => String(item.id)}
-        contentContainerStyle={[
-          styles.list,
-          filteredAppointments.length === 0 && styles.listEmpty,
-        ]}
-        ListEmptyComponent={renderEmpty}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={Colors.accent}
-          />
-        }
-        showsVerticalScrollIndicator={true}
-      />
+        <FlatList
+          data={filteredAppointments}
+          renderItem={({ item }) => (
+            <AppointmentCard
+              appointment={item}
+              onCancel={handleCancelAppointment}
+              onReschedule={setRescheduleTarget}
+              onAcceptProposal={handleAcceptProposal}
+              onDeclineProposal={handleDeclineProposal}
+              onPayDeposit={handlePayDeposit}
+              onBusinessPress={handleBusinessPress}
+            />
+          )}
+          keyExtractor={(item) => String(item.id)}
+          contentContainerStyle={[
+            styles.list,
+            filteredAppointments.length === 0 && styles.listEmpty,
+          ]}
+          ListEmptyComponent={renderEmpty}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={Colors.accent}
+            />
+          }
+          showsVerticalScrollIndicator={true}
+        />
+      </View>
 
       <RescheduleModal
         visible={Boolean(rescheduleTarget)}
@@ -420,6 +430,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.light.background,
+  },
+  shell: {
+    flex: 1,
+    width: '100%',
+  },
+  shellDesktop: {
+    maxWidth: 960,
+    alignSelf: 'center',
   },
   centerContainer: {
     flex: 1,
@@ -473,6 +491,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E0E0E0',
   },
+  headerDesktop: {
+    paddingTop: 40,
+  },
   headerTitle: {
     fontSize: 28,
     fontWeight: '700',
@@ -483,13 +504,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
   },
+  filtersScroll: {
+    flexGrow: 0,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
   filtersContainer: {
     flexDirection: 'row',
     padding: 16,
     gap: 8,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    alignItems: 'center',
   },
   filterChip: {
     flexDirection: 'row',

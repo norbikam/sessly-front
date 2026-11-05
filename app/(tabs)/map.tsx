@@ -7,7 +7,6 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +16,7 @@ import { useRouter } from 'expo-router';
 import { getBusinesses } from '../../api/business';
 import { OsmMapView } from '../../components/OsmMapView';
 import { useThemeColor } from '../../hooks/useThemeColor';
+import { useResponsive } from '../../hooks/useResponsive';
 import { Business } from '../../types/api';
 import { notify } from '../../utils/notify';
 import Colors from '../../constants/Colors';
@@ -69,8 +69,7 @@ function openFreeDirections(business: Business) {
 
 export default function MapScreen() {
   const router = useRouter();
-  const { width } = useWindowDimensions();
-  const isDesktop = Platform.OS === 'web' && width >= 1024;
+  const { isDesktopUp: isDesktop } = useResponsive();
   const backgroundColor = useThemeColor({}, 'background');
   const textColor = useThemeColor({}, 'text');
   const cardColor = useThemeColor({}, 'card');

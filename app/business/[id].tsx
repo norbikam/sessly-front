@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, ActivityIndicator, 
   TouchableOpacity, Platform, Linking, Alert, Share,
-  Animated, Pressable, TextInput, Modal, useWindowDimensions,
+  Animated, Pressable, TextInput, Modal,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { goBackToApp } from '../../utils/navigation';
@@ -11,11 +11,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Image } from 'expo-image';
 import Colors from '../../constants/Colors';
 import { addBusinessReview, getBusinessDetail, getBusinessReviews, updateBusinessReview } from '../../api/business';
-// ✅ IMPORTUJEMY FUNKCJĘ TWORZENIA WIZYTY
 import { createAppointment } from '../../api/appointments'; 
 import { useAuth } from '../../contexts/AuthContext';
 import { useFavorites } from '../../contexts/FavoritesContext';
 import { useLocale } from '../../contexts/LocaleContext';
+import { useResponsive } from '../../hooks/useResponsive';
 import BookingModal from '../../components/booking/BookingModal';
 import OpeningHoursCard from '../../components/business/OpeningHoursCard';
 import { Business, Review, Service, ServiceOption } from '../../types/api';
@@ -24,6 +24,7 @@ import { localizedDescription, localizedName } from '../../utils/localized';
 import { notify } from '../../utils/notify';
 import { getFollowing, toggleFollowing } from '../../api/following';
 import { buildServiceGroups, filterServiceGroups } from '../../utils/serviceGroups';
+import { StarRating } from '../../components/ui/StarRating';
 
 type CartItem = { service: Service; option?: ServiceOption };
 
@@ -33,7 +34,6 @@ const cartItemKey = (item: CartItem) =>
 const activeServiceOptions = (service: Service) =>
   (service.options || []).filter((item) => item.is_active !== false);
 
-// ✨ Animowane Serduszko (Ulubione)
 function AnimatedHeart({ isFavorite, onPress }: { isFavorite: boolean; onPress: () => void }) {
   const scale = useState(new Animated.Value(1))[0];
   const handlePress = () => {
@@ -57,8 +57,7 @@ export default function BusinessDetailScreen() {
   const id = params.id;
   const isPreview = params.preview === '1' || params.preview === 'true';
   const router = useRouter();
-  const { width } = useWindowDimensions();
-  const isDesktop = Platform.OS === 'web' && width >= 1024;
+  const { isDesktopUp: isDesktop } = useResponsive();
   const { isLoggedIn, user } = useAuth();
   const { currency, language, t } = useLocale();
   const { isFavorite, toggleFavorite } = useFavorites();
@@ -676,7 +675,7 @@ export default function BusinessDetailScreen() {
             <View key={review.id} style={styles.reviewItem}>
               <View style={styles.reviewHeader}>
                 <Text style={styles.reviewAuthor}>{review.customer_first_name || review.customer_username}</Text>
-                <Text style={styles.reviewStars}>{'★'.repeat(review.rating)}{'☆'.repeat(5 - review.rating)}</Text>
+                <StarRating rating={review.rating} size={15} />
               </View>
               {(review.localized_comment || review.comment) ? (
                 <Text style={styles.reviewText}>{review.localized_comment || review.comment}</Text>
@@ -1095,7 +1094,6 @@ const styles = StyleSheet.create({
   reviewItem: { paddingVertical: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E5E7EB' },
   reviewHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   reviewAuthor: { flex: 1, color: Colors.light.text, fontWeight: '800' },
-  reviewStars: { color: '#F59E0B', fontSize: 16 },
   reviewText: { color: Colors.light.textSecondary, lineHeight: 21, marginTop: 8 },
   cartDock: {
     position: 'absolute',

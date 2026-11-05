@@ -12,6 +12,7 @@ import Colors from '../../constants/Colors';
 import { PHONE_VERIFY_ENABLED } from '../../constants/config';
 import { useLocale } from '../../contexts/LocaleContext';
 import { useLocation } from '../../contexts/LocationContext';
+import { useResponsive } from '../../hooks/useResponsive';
 
 function LocationSwitcher() {
   const { locations, activeLocation, selectLocation } = useLocation();
@@ -45,6 +46,7 @@ export default function AccountScreen() {
   const { user, isLoggedIn, logout, savedAccounts, switchAccount, removeSavedAccount } = useAuth();
   const { favoritesData, refreshFavorites } = useFavorites();
   const { t, language, currency } = useLocale();
+  const { isDesktopUp: isDesktop } = useResponsive();
   
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -104,9 +106,9 @@ export default function AccountScreen() {
   return (
     <View style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.light.accent} />}>
-        
+        <View style={[styles.shell, isDesktop && styles.shellDesktop]}>
         {/* Header */}
-        <LinearGradient colors={['#8B5CF6', '#7C3AED']} style={styles.headerGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+        <LinearGradient colors={['#8B5CF6', '#7C3AED']} style={[styles.headerGradient, isDesktop && styles.headerGradientDesktop]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
           <View style={styles.headerContent}>
             <View style={styles.avatarContainer}>
               {user?.avatar_url ? (
@@ -311,6 +313,7 @@ export default function AccountScreen() {
 
         </View>
         <View style={{ height: 40 }} />
+        </View>
       </ScrollView>
     </View>
   );
@@ -318,8 +321,10 @@ export default function AccountScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
+  shell: { width: '100%' },
+  shellDesktop: { maxWidth: 880, alignSelf: 'center' },
   notLoggedInGradient: { flex: 1, justifyContent: 'center', padding: 20 },
-  notLoggedInCard: { backgroundColor: '#fff', borderRadius: 28, padding: 32, alignItems: 'center', shadowColor: '#4C1D95', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 20, elevation: 10 },
+  notLoggedInCard: { backgroundColor: '#fff', borderRadius: 28, padding: 32, alignItems: 'center', shadowColor: '#4C1D95', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 20, elevation: 10, width: '100%', maxWidth: 420, alignSelf: 'center' },
   iconCircle: { width: 90, height: 90, borderRadius: 45, backgroundColor: '#F5F3FF', justifyContent: 'center', alignItems: 'center', marginBottom: 24 },
   title: { fontSize: 26, fontWeight: '900', color: '#1E293B', marginBottom: 12 },
   subtitle: { fontSize: 15, color: '#64748B', textAlign: 'center', marginBottom: 32, lineHeight: 22 },
@@ -327,6 +332,7 @@ const styles = StyleSheet.create({
   loginButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   
   headerGradient: { paddingTop: Platform.OS === 'ios' ? 60 : 40, paddingBottom: 40, paddingHorizontal: 20, borderBottomLeftRadius: 32, borderBottomRightRadius: 32 },
+  headerGradientDesktop: { paddingTop: 40, borderBottomLeftRadius: 24, borderBottomRightRadius: 24 },
   headerContent: { flexDirection: 'row', alignItems: 'center' },
   avatarContainer: { width: 70, height: 70, borderRadius: 35, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', marginRight: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, overflow: 'hidden' },
   avatarImage: { width: 70, height: 70 },
@@ -350,7 +356,7 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 18, fontWeight: '800', color: '#1E293B', marginBottom: 16, marginLeft: 4 },
   
   businessGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  bCard: { width: '48%', backgroundColor: '#fff', borderRadius: 20, padding: 20, alignItems: 'center', shadowColor: '#4C1D95', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 },
+  bCard: { width: '48%', minWidth: 140, flexGrow: 1, backgroundColor: '#fff', borderRadius: 20, padding: 20, alignItems: 'center', shadowColor: '#4C1D95', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 },
   bIcon: { width: 48, height: 48, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
   bText: { fontSize: 14, fontWeight: '700', color: '#334155' },
   locationBox: { backgroundColor: '#fff', borderRadius: 20, padding: 16, marginBottom: 16 },

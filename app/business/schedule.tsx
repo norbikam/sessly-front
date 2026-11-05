@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  ActivityIndicator, Platform, Alert, ScrollView, useWindowDimensions
+  ActivityIndicator, Platform, Alert, ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
@@ -14,6 +14,7 @@ import {
 } from '../../api/appointments';
 import { Appointment, BusinessStaff, Service } from '../../types/api';
 import { useThemeColor } from '../../hooks/useThemeColor';
+import { useResponsive } from '../../hooks/useResponsive';
 import { Colors, Spacing, BorderRadius, Typography, Shadows } from '../../constants/designTokens';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -69,12 +70,13 @@ export default function ScheduleScreen() {
   const backgroundColor = useThemeColor({}, 'background');
   const textColor = useThemeColor({}, 'text');
   const cardColor = useThemeColor({}, 'card');
-  const { width } = useWindowDimensions();
+  const { isDesktopUp } = useResponsive();
   const { activeLocation } = useLocation();
   const { user } = useAuth();
   const canManage = user?.role === 'business_owner';
   const insets = useSafeAreaInsets();
-  const useSplit = width >= 1280;
+  // Split calendar + list from laptop / large tablet widths.
+  const useSplit = isDesktopUp;
 
   const loadScheduleForSlug = useCallback(async (targetSlug: string) => {
     try {

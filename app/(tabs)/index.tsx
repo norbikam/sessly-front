@@ -124,7 +124,11 @@ function HomeListHeader({
 
         <View style={styles.headerTop}>
           <View style={styles.logoContainer}>
-            <Ionicons name="sparkles" size={24} color="#fff" />
+            <Image
+              source={require('../../assets/images/icon.png')}
+              style={styles.logoMark}
+              contentFit="contain"
+            />
             <Text style={styles.appName}>Sessly</Text>
           </View>
 
@@ -590,7 +594,11 @@ export default function HomeScreen() {
           ListEmptyComponent={
             !searching ? (
               <View style={styles.emptyContainer}>
-                <Ionicons name="search-outline" size={80} color="#E2E8F0" />
+                <Image
+                  source={require('../../assets/images/icon.png')}
+                  style={styles.emptyLogo}
+                  contentFit="contain"
+                />
                 <Text style={styles.emptyTitle}>Brak wyników</Text>
                 <Text style={styles.emptyText}>Nie znaleźliśmy salonów pasujących do Twoich kryteriów.</Text>
               </View>
@@ -626,7 +634,8 @@ const styles = StyleSheet.create({
   headerCircle1: { position: 'absolute', top: -40, right: -40, width: 160, height: 160, borderRadius: 80, backgroundColor: 'rgba(255,255,255,0.1)' },
   headerCircle2: { position: 'absolute', bottom: -20, left: -20, width: 100, height: 100, borderRadius: 50, backgroundColor: 'rgba(255,255,255,0.1)' },
   headerTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, zIndex: 10 },
-  logoContainer: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  logoContainer: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  logoMark: { width: 28, height: 28, borderRadius: 8 },
   appName: { fontSize: 22, fontWeight: '900', color: '#fff', letterSpacing: 0.5 },
   
   userBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.2)', paddingVertical: 6, paddingLeft: 14, paddingRight: 6, borderRadius: 24, gap: 8 },
@@ -692,6 +701,7 @@ const styles = StyleSheet.create({
   bookBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
 
   emptyContainer: { alignItems: 'center', marginTop: 60, paddingHorizontal: 40 },
+  emptyLogo: { width: 72, height: 72, opacity: 0.85, marginBottom: 4 },
   emptyTitle: { fontSize: 20, fontWeight: '800', color: '#1E293B', marginTop: 16, marginBottom: 8 },
   emptyText: { fontSize: 15, color: '#64748B', textAlign: 'center' },
   

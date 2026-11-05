@@ -6,7 +6,7 @@ import {
   FlatList, 
   TouchableOpacity, 
   Platform,
-  Animated
+  Animated,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
@@ -14,10 +14,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../contexts/AuthContext';
 import { useFavorites } from '../../contexts/FavoritesContext';
+import { useResponsive } from '../../hooks/useResponsive';
 import Colors from '../../constants/Colors';
 import type { Business } from '../../types/api';
 
-// ✨ Animowane serce (do usuwania z ulubionych z poziomu listy)
 function AnimatedHeart({ isFavorite, onPress }: { isFavorite: boolean; onPress: () => void }) {
   const scale = useState(new Animated.Value(1))[0];
 
@@ -50,6 +50,7 @@ export default function FavoritesScreen() {
   const router = useRouter();
   const { isLoggedIn } = useAuth();
   const { favoritesData, toggleFavorite } = useFavorites();
+  const { isDesktopUp: isDesktop } = useResponsive();
 
   const handleBusinessPress = (business: Business) => {
     router.push({
@@ -171,38 +172,47 @@ export default function FavoritesScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Ulubione</Text>
-        <Text style={styles.headerSubtitle}>
-          {favoritesData.length} {favoritesData.length === 1 ? 'zapisane miejsce' : 'zapisanych miejsc'}
-        </Text>
-      </View>
+      <View style={[styles.shell, isDesktop && styles.shellDesktop]}>
+        <View style={[styles.header, isDesktop && styles.headerDesktop]}>
+          <Text style={styles.headerTitle}>Ulubione</Text>
+          <Text style={styles.headerSubtitle}>
+            {favoritesData.length} {favoritesData.length === 1 ? 'zapisane miejsce' : 'zapisanych miejsc'}
+          </Text>
+        </View>
 
-      <FlatList
-        data={favoritesData}
-        keyExtractor={(item) => String(item.id)}
-        renderItem={renderFavoriteCard}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={() => (
-          <View style={styles.emptyContainer}>
-            <View style={styles.emptyIconCircle}>
-              <Ionicons name="heart-dislike-outline" size={60} color="#ccc" />
+        <FlatList
+          data={favoritesData}
+          keyExtractor={(item) => String(item.id)}
+          renderItem={renderFavoriteCard}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          numColumns={isDesktop ? 2 : 1}
+          key={isDesktop ? 'fav-2' : 'fav-1'}
+          columnWrapperStyle={isDesktop ? styles.columnWrapper : undefined}
+          ListEmptyComponent={() => (
+            <View style={styles.emptyContainer}>
+              <View style={styles.emptyIconCircle}>
+                <Image
+                  source={require('../../assets/images/icon.png')}
+                  style={styles.emptyLogo}
+                  contentFit="contain"
+                />
+              </View>
+              <Text style={styles.emptyTitle}>Brak ulubionych</Text>
+              <Text style={styles.emptySubtitle}>
+                Nie dodałeś jeszcze żadnego miejsca do ulubionych. Odkryj najlepsze salony w okolicy!
+              </Text>
+              <TouchableOpacity 
+                style={styles.actionButton} 
+                onPress={() => router.push('/(tabs)')}
+              >
+                <Ionicons name="search" size={18} color="#fff" style={{ marginRight: 8 }} />
+                <Text style={styles.actionButtonText}>Przeglądaj firmy</Text>
+              </TouchableOpacity>
             </View>
-            <Text style={styles.emptyTitle}>Brak ulubionych</Text>
-            <Text style={styles.emptySubtitle}>
-              Nie dodałeś jeszcze żadnego miejsca do ulubionych. Odkryj najlepsze salony w okolicy!
-            </Text>
-            <TouchableOpacity 
-              style={styles.actionButton} 
-              onPress={() => router.push('/(tabs)')}
-            >
-              <Ionicons name="search" size={18} color="#fff" style={{ marginRight: 8 }} />
-              <Text style={styles.actionButtonText}>Przeglądaj firmy</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      />
+          )}
+        />
+      </View>
     </View>
   );
 }
@@ -212,6 +222,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FAF8FF',
   },
+  shell: {
+    flex: 1,
+    width: '100%',
+  },
+  shellDesktop: {
+    maxWidth: 960,
+    alignSelf: 'center',
+  },
   header: {
     paddingHorizontal: 20,
     paddingTop: Platform.OS === 'ios' ? 60 : 40,
@@ -219,6 +237,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#E5DFF5',
+  },
+  headerDesktop: {
+    paddingTop: 40,
+  },
+  columnWrapper: {
+    gap: 16,
   },
   headerTitle: {
     fontSize: 28,
@@ -238,6 +262,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   cardWrapper: {
+    flex: 1,
     marginBottom: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -359,6 +384,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 24,
+  },
+  emptyLogo: {
+    width: 64,
+    height: 64,
   },
   emptyIconCircle: {
     width: 120,

@@ -5,6 +5,7 @@ import {
   TextInput, Keyboard,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Image } from 'expo-image';
 import { goBackToApp } from '../../utils/navigation';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
@@ -14,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Colors from '../../constants/Colors';
 import { useLocale } from '../../contexts/LocaleContext';
+import { useResponsive } from '../../hooks/useResponsive';
 import { getApiErrorPayload } from '../../api/errors';
 
 const { height } = Dimensions.get('window');
@@ -33,6 +35,7 @@ export default function LoginScreen() {
   const { login, savedAccounts, switchAccount, removeSavedAccount } = useAuth();
   const { t } = useLocale();
   const router = useRouter();
+  const { isDesktopUp: isDesktop } = useResponsive();
 
   const handleLogin = async () => {
     if (!username.trim() || !password) {
@@ -108,15 +111,19 @@ export default function LoginScreen() {
 
         <View style={styles.logoSection}>
           <View style={styles.logoCircle}>
-            <Ionicons name="sparkles" size={48} color={Colors.light.accent} />
+            <Image
+              source={require('../../assets/images/icon.png')}
+              style={styles.logoImage}
+              contentFit="contain"
+            />
           </View>
           <Text style={styles.appName}>Sessly</Text>
           <Text style={styles.tagline}>{t('auth.tagline')}</Text>
         </View>
 
-        <View style={styles.card}>
+        <View style={[styles.card, isDesktop && styles.cardDesktop]}>
           <View style={styles.cardHeader}>
-            <Text style={styles.title}>{t('auth.welcomeBack')} 👋</Text>
+            <Text style={styles.title}>{t('auth.welcomeBack')}</Text>
             <Text style={styles.subtitle}>{t('auth.loginSubtitle')}</Text>
           </View>
 
@@ -239,10 +246,12 @@ const styles = StyleSheet.create({
   scrollContent: { flexGrow: 1, padding: 20, paddingTop: Platform.OS === 'ios' ? 60 : 40, paddingBottom: 40 },
   backButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255, 255, 255, 0.2)', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
   logoSection: { alignItems: 'center', marginBottom: 30 },
-  logoCircle: { width: 90, height: 90, borderRadius: 45, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 8 },
+  logoCircle: { width: 90, height: 90, borderRadius: 45, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 8, overflow: 'hidden' },
+  logoImage: { width: 72, height: 72 },
   appName: { fontSize: 36, fontWeight: '900', color: '#fff', letterSpacing: 0.5 },
   tagline: { fontSize: 16, color: 'rgba(255, 255, 255, 0.9)', fontWeight: '500' },
-  card: { backgroundColor: '#fff', borderRadius: 28, padding: 24, shadowColor: '#4C1D95', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.15, shadowRadius: 20, elevation: 12 },
+  card: { backgroundColor: '#fff', borderRadius: 28, padding: 24, shadowColor: '#4C1D95', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.15, shadowRadius: 20, elevation: 12, width: '100%', maxWidth: 460, alignSelf: 'center' },
+  cardDesktop: { maxWidth: 480, padding: 32 },
   cardHeader: { marginBottom: 24 },
   title: { fontSize: 24, fontWeight: '800', color: '#1F2937', marginBottom: 6 },
   subtitle: { fontSize: 14, color: '#64748B', fontWeight: '500' },

@@ -15,21 +15,26 @@ export const useResponsive = () => {
 
   const screenSize = getScreenSize();
 
+  const isDesktopUp = width >= Breakpoints.desktop;
+
   return {
     screenSize,
     width,
     isMobile: screenSize === 'mobile',
     isTablet: screenSize === 'tablet',
+    /** Desktop band only (1024–1279). Prefer `isDesktopUp` for layout shells. */
     isDesktop: screenSize === 'desktop',
     isWide: screenSize === 'wide',
     isTabletUp: width >= Breakpoints.tablet,
+    /** True from desktop breakpoint up (includes wide). */
+    isDesktopUp,
     // Helper functions for conditional rendering
     whenMobile: (mobileValue: any, otherValue: any = null) =>
       screenSize === 'mobile' ? mobileValue : otherValue,
     whenTablet: (tabletValue: any, otherValue: any = null) =>
       screenSize === 'tablet' ? tabletValue : otherValue,
     whenDesktop: (desktopValue: any, otherValue: any = null) =>
-      screenSize === 'desktop' ? desktopValue : otherValue,
+      isDesktopUp ? desktopValue : otherValue,
     whenWide: (wideValue: any, otherValue: any = null) =>
       screenSize === 'wide' ? wideValue : otherValue,
   };

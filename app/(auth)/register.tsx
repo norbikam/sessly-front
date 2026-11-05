@@ -198,7 +198,7 @@ export default function RegisterScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        
+        <View style={styles.shell}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => goBackToApp(router, '/(auth)/login')} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={24} color={Colors.light.text} />
@@ -351,6 +351,7 @@ export default function RegisterScreen() {
         <TouchableOpacity style={styles.loginLink} onPress={() => router.push('/(auth)/login')}>
           <Text style={styles.loginLinkText}>Masz już konto? <Text style={styles.loginLinkBold}>Zaloguj się</Text></Text>
         </TouchableOpacity>
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -358,7 +359,8 @@ export default function RegisterScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
-  scrollContent: { paddingHorizontal: 24 },
+  scrollContent: { paddingHorizontal: 24, flexGrow: 1 },
+  shell: { width: '100%', maxWidth: 560, alignSelf: 'center' },
   header: { marginBottom: 24 },
   backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', marginBottom: 16, shadowColor: '#000', shadowOffset: {width:0, height:2}, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
   title: { fontSize: 28, fontWeight: '900', color: Colors.light.text },

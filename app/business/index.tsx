@@ -9,7 +9,6 @@ import {
   Alert,
   RefreshControl,
   Platform,
-  useWindowDimensions,
 } from 'react-native';
 import { useRouter, useFocusEffect, useSegments } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,6 +18,7 @@ import { BusinessStats, getBusinessDetail, getBusinessStats } from '@/api/busine
 import { getBusinessAppointments } from '@/api/appointments';
 import Colors from '@/constants/Colors';
 import { useLocation } from '@/contexts/LocationContext';
+import { useResponsive } from '@/hooks/useResponsive';
 import { appointmentClientName, staffDisplayName } from '@/utils/staffName';
 
 const ACTIONS = [
@@ -128,8 +128,7 @@ function StatCard({
 export default function BusinessDashboard() {
   const router = useRouter();
   const segments = useSegments();
-  const { width } = useWindowDimensions();
-  const isDesktop = Platform.OS === 'web' && width >= 1024;
+  const { isDesktopUp: isDesktop } = useResponsive();
   const { user, logout } = useAuth();
   const { activeLocation } = useLocation();
   const [business, setBusiness] = useState<any>(null);
@@ -264,7 +263,7 @@ export default function BusinessDashboard() {
           <View style={styles.headerLeft}>
             <Text style={styles.greeting}>{greeting},</Text>
             <Text style={styles.userName} numberOfLines={1}>
-              {user?.first_name || user?.username || 'właścicielu'} 👋
+              {user?.first_name || user?.username || 'właścicielu'}
             </Text>
           </View>
           <View style={styles.headerActions}>
