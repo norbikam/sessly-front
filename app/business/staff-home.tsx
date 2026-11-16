@@ -11,6 +11,7 @@ import { BusinessStats, getStaffStats } from '@/api/business';
 import { getBusinessAppointments } from '@/api/appointments';
 import Colors from '@/constants/Colors';
 import { useLocation } from '@/contexts/LocationContext';
+import { NotificationBell } from '@/components/ui/NotificationBell';
 import { Appointment } from '@/types/api';
 
 export default function StaffHome() {
@@ -80,9 +81,12 @@ export default function StaffHome() {
             <Text style={styles.greeting}>Twój grafik</Text>
             <Text style={styles.name}>{user?.first_name || user?.username}</Text>
           </View>
-          <TouchableOpacity style={styles.logout} onPress={async () => { await logout(); router.replace('/(auth)/login'); }}>
-            <Ionicons name="log-out-outline" size={22} color="#fff" />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <NotificationBell />
+            <TouchableOpacity style={styles.logout} onPress={async () => { await logout(); router.replace('/(auth)/login'); }}>
+              <Ionicons name="log-out-outline" size={22} color="#fff" />
+            </TouchableOpacity>
+          </View>
         </View>
         <Text style={styles.place}>{activeLocation?.name || user?.staff_position?.name}</Text>
         <View style={styles.pills}>
@@ -154,6 +158,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC' },
   header: { paddingTop: Platform.OS === 'ios' ? 60 : 48, paddingHorizontal: 20, paddingBottom: 24 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   greeting: { color: 'rgba(255,255,255,0.75)', fontWeight: '600' },
   name: { color: '#fff', fontSize: 24, fontWeight: '800', marginTop: 4 },
   logout: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.16)' },

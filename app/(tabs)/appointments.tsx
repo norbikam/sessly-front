@@ -9,7 +9,6 @@ import {
   RefreshControl,
   Platform,
   Alert,
-  ScrollView,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -357,31 +356,31 @@ export default function AppointmentsScreen() {
           </Text>
         </View>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filtersContainer}
-          style={styles.filtersScroll}
-        >
-          {FILTERS.map((f) => (
-            <TouchableOpacity
-              key={f.value}
-              style={[styles.filterChip, filter === f.value && styles.filterChipActive]}
-              onPress={() => setFilter(f.value)}
-            >
-              <Ionicons
-                name={f.icon as any}
-                size={16}
-                color={filter === f.value ? '#fff' : Colors.accent}
-              />
-              <Text
-                style={[styles.filterText, filter === f.value && styles.filterTextActive]}
+        <View style={styles.filtersContainer}>
+          {FILTERS.map((f) => {
+            const active = filter === f.value;
+            return (
+              <TouchableOpacity
+                key={f.value}
+                style={[styles.filterChip, active && styles.filterChipActive]}
+                onPress={() => setFilter(f.value)}
+                accessibilityState={{ selected: active }}
               >
-                {f.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+                <Ionicons
+                  name={f.icon as any}
+                  size={16}
+                  color={active ? '#fff' : '#5B21B6'}
+                />
+                <Text
+                  style={[styles.filterText, active && styles.filterTextActive]}
+                  numberOfLines={1}
+                >
+                  {f.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
 
         <FlatList
           data={filteredAppointments}
@@ -504,37 +503,39 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
   },
-  filtersScroll: {
-    flexGrow: 0,
+  filtersContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 8,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
-  filtersContainer: {
-    flexDirection: 'row',
-    padding: 16,
-    gap: 8,
-    alignItems: 'center',
-  },
   filterChip: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexShrink: 0,
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: '#FFF5F0',
+    backgroundColor: '#F5F3FF',
+    borderWidth: 1,
+    borderColor: '#DDD6FE',
     gap: 6,
   },
   filterChipActive: {
-    backgroundColor: Colors.accent,
+    backgroundColor: '#7C3AED',
+    borderColor: '#7C3AED',
   },
   filterText: {
     fontSize: 13,
-    fontWeight: '600',
-    color: Colors.accent,
+    fontWeight: '700',
+    color: '#5B21B6',
   },
   filterTextActive: {
-    color: '#fff',
+    color: '#FFFFFF',
   },
   list: {
     padding: 16,

@@ -58,6 +58,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const userData = await getCurrentUser();
           await saveUserProfile(userData, true);
           setUser(userData);
+          const accounts = await getSavedAccounts();
+          const existing = accounts.find((item) => item.id === String(userData.id));
+          if (existing) {
+            setSavedAccounts(
+              await rememberAccount(userData, existing.accessToken, existing.refreshToken),
+            );
+          } else {
+            setSavedAccounts(accounts);
+          }
+          return;
         } catch (refreshError) {
           console.error('Failed to refresh stored user from API:', refreshError);
         }
@@ -161,11 +171,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSavedAccounts(await forgetAccount(accountId));
   };
 
+  const syncSavedAccountProfile = async (userData: User) => {
+    const existing = savedAccounts.find((item) => item.id === String(userData.id));
+    if (!existing) return;
+    setSavedAccounts(
+      await rememberAccount(userData, existing.accessToken, existing.refreshToken),
+    );
+  };
+
   const updateUser = async (userData: Partial<User>) => {
     if (!user) return;
     const updatedUser = { ...user, ...userData };
     await saveUserProfile(updatedUser, isPersistentSession);
     setUser(updatedUser);
+    await syncSavedAccountProfile(updatedUser);
   };
 
   const refreshUser = async () => {
@@ -173,6 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const userData = await getCurrentUser();
       await saveUserProfile(userData, isPersistentSession);
       setUser(userData);
+      await syncSavedAccountProfile(userData);
     } catch (error) {
       console.error('❌ [AuthContext] Failed to refresh user from API:', error);
     }

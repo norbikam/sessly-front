@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { 
   View, Text, TextInput, TouchableOpacity, StyleSheet, 
   KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, TextInputProps
@@ -12,6 +12,7 @@ import { useLocale } from '../../contexts/LocaleContext';
 import Colors from '../../constants/Colors';
 import { notify } from '../../utils/notify';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getPasswordRuleStatus, getPasswordValidationError } from '../../utils/password';
 
 type Role = 'customer' | 'business_owner';
 
@@ -64,6 +65,9 @@ export default function RegisterScreen() {
   const [lookingUpNip, setLookingUpNip] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
 
+  const passwordRules = useMemo(() => getPasswordRuleStatus(password), [password]);
+  const passwordsMatch = passwordConfirm.length === 0 || password === passwordConfirm;
+
   const digitsOnly = (value: string) => value.replace(/\D/g, '');
 
   const handleNipLookup = async () => {
@@ -105,6 +109,12 @@ export default function RegisterScreen() {
       const msg = t('auth.usernameSpaces');
       setFormError(msg);
       notify('Błąd', msg);
+      return;
+    }
+    const passwordError = getPasswordValidationError(password);
+    if (passwordError) {
+      setFormError(passwordError);
+      notify('Hasło', passwordError);
       return;
     }
     if (password !== passwordConfirm) {
@@ -253,8 +263,49 @@ export default function RegisterScreen() {
             <FormField label="Nazwisko" containerStyle={styles.rowField} placeholder="Nowak" value={lastName} onChangeText={setLastName} />
           </View>
 
-          <FormField label="Hasło *" icon="lock-closed-outline" placeholder="Minimum 8 znaków" value={password} onChangeText={setPassword} secureTextEntry />
-          <FormField label="Powtórz hasło *" icon="shield-checkmark-outline" placeholder="Wpisz hasło ponownie" value={passwordConfirm} onChangeText={setPasswordConfirm} secureTextEntry />
+          <FormField
+            label="Hasło *"
+            icon="lock-closed-outline"
+            placeholder="Np. Sessly123!"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            autoComplete="new-password"
+            textContentType="newPassword"
+          />
+          {password.length > 0 ? (
+            <View style={styles.passwordRules}>
+              {passwordRules.map((rule) => (
+                <View key={rule.id} style={styles.passwordRuleRow}>
+                  <Ionicons
+                    name={rule.met ? 'checkmark-circle' : 'ellipse-outline'}
+                    size={16}
+                    color={rule.met ? '#16A34A' : '#94A3B8'}
+                  />
+                  <Text style={[styles.passwordRuleText, rule.met && styles.passwordRuleMet]}>
+                    {rule.label}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <Text style={styles.passwordHint}>
+              Min. 8 znaków, wielka i mała litera, cyfra oraz znak specjalny.
+            </Text>
+          )}
+          <FormField
+            label="Powtórz hasło *"
+            icon="shield-checkmark-outline"
+            placeholder="Wpisz hasło ponownie"
+            value={passwordConfirm}
+            onChangeText={setPasswordConfirm}
+            secureTextEntry
+            autoComplete="new-password"
+            textContentType="newPassword"
+          />
+          {passwordConfirm.length > 0 && !passwordsMatch ? (
+            <Text style={styles.passwordMismatch}>Hasła nie są identyczne.</Text>
+          ) : null}
         </View>
 
         {role === 'business_owner' && (
@@ -382,6 +433,32 @@ const styles = StyleSheet.create({
   inputGroup: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', borderRadius: 14, borderWidth: 1, borderColor: '#CBD5E1', paddingHorizontal: 16, minHeight: 54 },
   inputIcon: { marginRight: 12 },
   input: { flex: 1, fontSize: 16, color: '#0F172A', minHeight: 52, fontWeight: '500' },
+  passwordHint: {
+    marginTop: -6,
+    marginBottom: 12,
+    marginLeft: 2,
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#64748B',
+    fontWeight: '500',
+  },
+  passwordRules: {
+    marginTop: -4,
+    marginBottom: 12,
+    gap: 6,
+    paddingHorizontal: 2,
+  },
+  passwordRuleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  passwordRuleText: { fontSize: 13, color: '#64748B', fontWeight: '600' },
+  passwordRuleMet: { color: '#15803D' },
+  passwordMismatch: {
+    marginTop: -6,
+    marginBottom: 10,
+    marginLeft: 2,
+    fontSize: 13,
+    color: '#EF4444',
+    fontWeight: '700',
+  },
   row: { flexDirection: 'row', gap: 12 },
   rowField: { flex: 1 },
   cityField: { flex: 2 },

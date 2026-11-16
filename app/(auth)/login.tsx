@@ -110,13 +110,12 @@ export default function LoginScreen() {
         </TouchableOpacity>
 
         <View style={styles.logoSection}>
-          <View style={styles.logoCircle}>
-            <Image
-              source={require('../../assets/images/icon.png')}
-              style={styles.logoImage}
-              contentFit="contain"
-            />
-          </View>
+          <Image
+            source={require('../../assets/images/sessly-mark.png')}
+            style={styles.logoImage}
+            contentFit="contain"
+            transition={0}
+          />
           <Text style={styles.appName}>Sessly</Text>
           <Text style={styles.tagline}>{t('auth.tagline')}</Text>
         </View>
@@ -148,7 +147,17 @@ export default function LoginScreen() {
                 <View key={account.id} style={styles.savedAccount}>
                   <TouchableOpacity style={styles.savedMain} onPress={() => handleAccountSwitch(account.id)}>
                     <View style={styles.savedAvatar}>
-                      <Text style={styles.savedAvatarText}>{(account.user.first_name || account.user.username).slice(0, 1).toUpperCase()}</Text>
+                      {account.user.avatar_url ? (
+                        <Image
+                          source={{ uri: account.user.avatar_url }}
+                          style={styles.savedAvatarImage}
+                          contentFit="cover"
+                        />
+                      ) : (
+                        <Text style={styles.savedAvatarText}>
+                          {(account.user.first_name || account.user.username).slice(0, 1).toUpperCase()}
+                        </Text>
+                      )}
                     </View>
                     <View style={styles.savedDetails}>
                       <Text style={styles.savedName}>{account.user.first_name || account.user.username}</Text>
@@ -246,8 +255,12 @@ const styles = StyleSheet.create({
   scrollContent: { flexGrow: 1, padding: 20, paddingTop: Platform.OS === 'ios' ? 60 : 40, paddingBottom: 40 },
   backButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255, 255, 255, 0.2)', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
   logoSection: { alignItems: 'center', marginBottom: 30 },
-  logoCircle: { width: 90, height: 90, borderRadius: 45, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 8, overflow: 'hidden' },
-  logoImage: { width: 72, height: 72 },
+  logoImage: {
+    width: 96,
+    height: 96,
+    marginBottom: 16,
+    backgroundColor: 'transparent',
+  },
   appName: { fontSize: 36, fontWeight: '900', color: '#fff', letterSpacing: 0.5 },
   tagline: { fontSize: 16, color: 'rgba(255, 255, 255, 0.9)', fontWeight: '500' },
   card: { backgroundColor: '#fff', borderRadius: 28, padding: 24, shadowColor: '#4C1D95', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.15, shadowRadius: 20, elevation: 12, width: '100%', maxWidth: 460, alignSelf: 'center' },
@@ -268,7 +281,16 @@ const styles = StyleSheet.create({
   savedTitle: { color: '#334155', fontSize: 13, fontWeight: '800', marginBottom: 8 },
   savedAccount: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', borderRadius: 14, marginBottom: 8 },
   savedMain: { flex: 1, flexDirection: 'row', alignItems: 'center', padding: 10 },
-  savedAvatar: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#EDE9FE', alignItems: 'center', justifyContent: 'center' },
+  savedAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: '#EDE9FE',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  savedAvatarImage: { width: 38, height: 38 },
   savedAvatarText: { color: Colors.light.accent, fontWeight: '900' },
   savedDetails: { flex: 1, marginLeft: 10 },
   savedName: { color: '#1E293B', fontWeight: '800', fontSize: 14 },

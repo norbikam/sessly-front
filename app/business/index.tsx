@@ -19,6 +19,7 @@ import { getBusinessAppointments } from '@/api/appointments';
 import Colors from '@/constants/Colors';
 import { useLocation } from '@/contexts/LocationContext';
 import { useResponsive } from '@/hooks/useResponsive';
+import { NotificationBell } from '@/components/ui/NotificationBell';
 import { appointmentClientName, staffDisplayName } from '@/utils/staffName';
 
 const ACTIONS = [
@@ -267,6 +268,7 @@ export default function BusinessDashboard() {
             </Text>
           </View>
           <View style={styles.headerActions}>
+            <NotificationBell />
             <TouchableOpacity
               style={styles.avatarBtn}
               onPress={() => router.push('/account/edit-profile' as any)}

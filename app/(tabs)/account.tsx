@@ -13,6 +13,7 @@ import { PHONE_VERIFY_ENABLED } from '../../constants/config';
 import { useLocale } from '../../contexts/LocaleContext';
 import { useLocation } from '../../contexts/LocationContext';
 import { useResponsive } from '../../hooks/useResponsive';
+import { useNotifications } from '../../contexts/NotificationsContext';
 
 function LocationSwitcher() {
   const { locations, activeLocation, selectLocation } = useLocation();
@@ -47,6 +48,7 @@ export default function AccountScreen() {
   const { favoritesData, refreshFavorites } = useFavorites();
   const { t, language, currency } = useLocale();
   const { isDesktopUp: isDesktop } = useResponsive();
+  const { unreadCount } = useNotifications();
   
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -207,7 +209,17 @@ export default function AccountScreen() {
                   <View key={account.id}>
                     <TouchableOpacity style={styles.accountSwitchRow} onPress={() => handleSwitchAccount(account.id)}>
                       <View style={styles.accountAvatar}>
-                        <Text style={styles.accountAvatarText}>{(account.user.first_name || account.user.username).slice(0, 1).toUpperCase()}</Text>
+                        {account.user.avatar_url ? (
+                          <Image
+                            source={{ uri: account.user.avatar_url }}
+                            style={styles.accountAvatarImage}
+                            contentFit="cover"
+                          />
+                        ) : (
+                          <Text style={styles.accountAvatarText}>
+                            {(account.user.first_name || account.user.username).slice(0, 1).toUpperCase()}
+                          </Text>
+                        )}
                       </View>
                       <View style={styles.accountInfo}>
                         <Text style={styles.accountName}>{account.user.first_name || account.user.username}</Text>
@@ -250,9 +262,14 @@ export default function AccountScreen() {
                   <View style={styles.menuDivider} />
                 </>
               ) : null}
-              <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/(tabs)/notifications')}>
+              <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/account/notifications')}>
                 <View style={styles.menuIconBox}><Ionicons name="notifications-outline" size={20} color="#4B5563" /></View>
                 <Text style={styles.menuItemText}>{t('account.notifications')}</Text>
+                {unreadCount > 0 ? (
+                  <View style={styles.notifBadge}>
+                    <Text style={styles.notifBadgeText}>{unreadCount > 9 ? '9+' : unreadCount}</Text>
+                  </View>
+                ) : null}
                 <Ionicons name="chevron-forward" size={18} color="#CBD5E1" />
               </TouchableOpacity>
               <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/account/edit-profile')}>
@@ -371,9 +388,29 @@ const styles = StyleSheet.create({
   menuIconBox: { width: 36, height: 36, borderRadius: 10, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center', marginRight: 14 },
   menuItemText: { flex: 1, fontSize: 15, fontWeight: '600', color: '#334155' },
   menuItemHint: { fontSize: 12, color: '#94A3B8', marginTop: 2, fontWeight: '600' },
+  notifBadge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    paddingHorizontal: 6,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  notifBadgeText: { color: '#fff', fontSize: 11, fontWeight: '800' },
   menuDivider: { height: 1, backgroundColor: '#F1F5F9', marginLeft: 66 },
   accountSwitchRow: { flexDirection: 'row', alignItems: 'center', padding: 14 },
-  accountAvatar: { width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EDE9FE' },
+  accountAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EDE9FE',
+    overflow: 'hidden',
+  },
+  accountAvatarImage: { width: 42, height: 42 },
   accountAvatarText: { color: Colors.light.accent, fontWeight: '900', fontSize: 17 },
   accountInfo: { flex: 1, marginLeft: 12 },
   accountName: { color: '#1E293B', fontSize: 15, fontWeight: '800' },

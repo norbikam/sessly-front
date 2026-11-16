@@ -5,15 +5,12 @@ import { useColorScheme } from '../../hooks/useColorScheme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLocale } from '../../contexts/LocaleContext';
-import { useNotifications } from '../../contexts/NotificationsContext';
-
 export default function TabsLayout() {
   const scheme = useColorScheme() === 'dark' ? 'dark' : 'light';
   const palette = Colors[scheme];
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { t } = useLocale();
-  const { unreadCount } = useNotifications();
   const isTeamAccount = user?.role === 'business_owner' || user?.role === 'staff';
 
   return (
@@ -72,21 +69,6 @@ export default function TabsLayout() {
           title: t('tabs.map'),
           href: isTeamAccount ? null : undefined,
           tabBarIcon: ({ color, size }) => <Ionicons name="map" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="notifications"
-        options={{
-          title: t('tabs.notifications'),
-          tabBarBadge: unreadCount > 0 ? (unreadCount > 9 ? '9+' : unreadCount) : undefined,
-          tabBarBadgeStyle: {
-            backgroundColor: Colors.light.accent,
-            fontSize: 10,
-            fontWeight: '800',
-          },
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name={unreadCount > 0 ? 'notifications' : 'notifications-outline'} size={size} color={color} />
-          ),
         }}
       />
       <Tabs.Screen

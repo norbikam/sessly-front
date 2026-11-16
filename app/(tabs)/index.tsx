@@ -30,6 +30,7 @@ import { useResponsive } from '../../hooks/useResponsive';
 import SearchBar from '../../components/search/SearchBar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { categoryLabel } from '../../utils/categories';
+import { NotificationBell } from '../../components/ui/NotificationBell';
 const SORT_KEY = '@sessly_sort_preference';
 
 type SortOption = 'name-asc' | 'name-desc' | 'newest';
@@ -132,26 +133,29 @@ function HomeListHeader({
             <Text style={styles.appName}>Sessly</Text>
           </View>
 
-          {isLoggedIn ? (
-            <TouchableOpacity style={styles.userBadge} onPress={onAccount}>
-              <Text style={styles.userName} numberOfLines={1}>
-                {firstName || username || t('home.profile')}
-              </Text>
-              {avatarUrl ? (
-                <Image source={{ uri: avatarUrl }} style={styles.avatarImage} contentFit="cover" />
-              ) : (
-                <View style={styles.avatarPlaceholder}>
-                  <Text style={styles.avatarText}>
-                    {(firstName?.[0] || username?.[0] || '?').toUpperCase()}
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity style={styles.loginPill} onPress={onLogin}>
-              <Text style={styles.loginPillText}>{t('account.login')}</Text>
-            </TouchableOpacity>
-          )}
+          <View style={styles.headerActions}>
+            {isLoggedIn ? <NotificationBell /> : null}
+            {isLoggedIn ? (
+              <TouchableOpacity style={styles.userBadge} onPress={onAccount}>
+                <Text style={styles.userName} numberOfLines={1}>
+                  {firstName || username || t('home.profile')}
+                </Text>
+                {avatarUrl ? (
+                  <Image source={{ uri: avatarUrl }} style={styles.avatarImage} contentFit="cover" />
+                ) : (
+                  <View style={styles.avatarPlaceholder}>
+                    <Text style={styles.avatarText}>
+                      {(firstName?.[0] || username?.[0] || '?').toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={styles.loginPill} onPress={onLogin}>
+                <Text style={styles.loginPillText}>{t('account.login')}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         <Text style={styles.greeting}>
@@ -637,6 +641,7 @@ const styles = StyleSheet.create({
   logoContainer: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   logoMark: { width: 28, height: 28, borderRadius: 8 },
   appName: { fontSize: 22, fontWeight: '900', color: '#fff', letterSpacing: 0.5 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   
   userBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.2)', paddingVertical: 6, paddingLeft: 14, paddingRight: 6, borderRadius: 24, gap: 8 },
   avatarPlaceholder: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center' },
