@@ -25,6 +25,7 @@ import { notify } from '../../utils/notify';
 import { getFollowing, toggleFollowing } from '../../api/following';
 import { buildServiceGroups, filterServiceGroups } from '../../utils/serviceGroups';
 import { StarRating } from '../../components/ui/StarRating';
+import { LoginRequiredModal } from '../../components/ui/LoginRequiredModal';
 
 type CartItem = { service: Service; option?: ServiceOption };
 
@@ -96,6 +97,7 @@ export default function BusinessDetailScreen() {
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [cartExpanded, setCartExpanded] = useState(false);
   const [optionPickerService, setOptionPickerService] = useState<Service | null>(null);
+  const [loginPromptVisible, setLoginPromptVisible] = useState(false);
   const [serviceQuery, setServiceQuery] = useState('');
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
   // Preview shows customer UI for owners; real booking stays for customers/guests.
@@ -200,10 +202,7 @@ export default function BusinessDetailScreen() {
       return;
     }
     if (!isLoggedIn) {
-      Alert.alert('Wymagane logowanie', 'Musisz być zalogowany, aby zarezerwować termin.', [
-        { text: 'Anuluj', style: 'cancel' },
-        { text: 'Zaloguj się', onPress: () => router.push('/(auth)/login') }
-      ]);
+      setLoginPromptVisible(true);
       return;
     }
     const options = activeServiceOptions(service);
@@ -221,9 +220,18 @@ export default function BusinessDetailScreen() {
 
   const openCartBooking = () => {
     if (!cart.length) return;
+    if (!isLoggedIn) {
+      setLoginPromptVisible(true);
+      return;
+    }
     setSelectedService(cart[0].service);
     setCartExpanded(false);
     setShowBookingModal(true);
+  };
+
+  const goToLogin = () => {
+    setLoginPromptVisible(false);
+    router.push('/(auth)/login');
   };
 
   const removeCartItem = (item: CartItem) => {
@@ -808,6 +816,16 @@ export default function BusinessDetailScreen() {
           onConfirm={handleBookingConfirm}
         />
       )}
+
+      <LoginRequiredModal
+        visible={loginPromptVisible}
+        title={t('booking.loginRequiredTitle')}
+        message={t('booking.loginRequiredBody')}
+        cancelLabel={t('common.cancel')}
+        confirmLabel={t('booking.loginCta')}
+        onCancel={() => setLoginPromptVisible(false)}
+        onConfirm={goToLogin}
+      />
 
       {optionPickerService ? (
         <Modal
