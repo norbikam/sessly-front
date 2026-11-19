@@ -1,8 +1,11 @@
 {
-  "buildCommand": "npx expo export --platform web",
+  "buildCommand": "npx expo export --platform web && node scripts/prepare-web-dist.mjs",
   "outputDirectory": "dist",
   "framework": null,
   "rewrites": [
-    { "source": "/((?!_expo/static).*)", "destination": "/index.html" }
+    {
+      "source": "/((?!_expo/static|brand/).*)",
+      "destination": "/app-shell.html"
+    }
   ]
 }
